@@ -50,7 +50,6 @@
     NIXOS_OZONE_WL = "1";
     MOZ_ENABLE_WAYLAND = "1";
     XDG_SESSION_TYPE = "wayland";
-    WLR_NO_HARDWARE_CURSORS = "1";
   };
   programs.xwayland.enable = true;
   programs.dconf.enable = true;

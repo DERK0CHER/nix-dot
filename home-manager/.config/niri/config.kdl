@@ -34,9 +34,16 @@ input {
     focus-follows-mouse
 }
 
-output "eDP-1" {
-    mode "2560x1664@60"
-    scale 1.6
+output "HDMI-A-1" {
+    mode "2560x1440@143.991"
+    scale 1
+    position x=0 y=0
+}
+
+output "DP-1" {
+    mode "1920x1080@300"
+    scale 1
+    position x=2560 y=0
 }
 
 layout {

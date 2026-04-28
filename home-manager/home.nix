@@ -94,6 +94,32 @@
         printf '> '
         set_color normal
       end
+
+      function gpub --description "Push current branch and set upstream"
+        set -l branch (git branch --show-current 2>/dev/null)
+        if test -z "$branch"
+          echo "Not on a git branch."
+          return 1
+        end
+        git push --set-upstream origin $branch $argv
+      end
+
+      function git --wraps git --description "git wrapper with auto upstream push"
+        if test (count $argv) -ge 1; and test "$argv[1]" = "push"
+          if not contains -- --set-upstream $argv; and not contains -- -u $argv
+            set -l branch (command git branch --show-current 2>/dev/null)
+            if test -n "$branch"
+              command git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>/dev/null
+              if test $status -ne 0
+                command git push --set-upstream origin $branch $argv[2..-1]
+                return $status
+              end
+            end
+          end
+        end
+
+        command git $argv
+      end
     '';
     shellAliases = {
       pamcan = "pacman";
