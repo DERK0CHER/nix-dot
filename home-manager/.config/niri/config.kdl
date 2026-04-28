@@ -78,6 +78,7 @@ spawn-at-startup "dbus-update-activation-environment" "--all"
 spawn-at-startup "easyeffects" "--gapplication-service"
 spawn-at-startup "wl-paste" "--type" "text" "--watch" "cliphist" "store"
 spawn-at-startup "wl-paste" "--type" "image" "--watch" "cliphist" "store"
+spawn-at-startup "kitty"
 
 window-rule {
     geometry-corner-radius 11
@@ -119,14 +120,15 @@ binds {
     XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "set" "12.75+"; }
     XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "set" "12.75-"; }
 
-    Mod+T { spawn "foot"; }
-    Mod+Return { spawn "foot"; }
+    Mod+T { spawn "kitty"; }
+    Mod+Return { spawn "kitty"; }
     Mod+Space { spawn "wofi" "--show" "drun"; }
     Mod+V { spawn "sh" "-c" "pkill fuzzel || cliphist list | fuzzel --match-mode fzf --dmenu | cliphist decode | wl-copy"; }
     Mod+Period { spawn "sh" "-c" "pkill fuzzel || ~/.local/bin/fuzzel-emoji"; }
 
     Mod+Shift+S { spawn "sh" "-c" "grim -g \"$(slurp)\" - | wl-copy"; }
     Mod+Shift+Alt+S { spawn "sh" "-c" "grim -g \"$(slurp)\" - | swappy -f -"; }
+    Mod+R { spawn "sh" "-c" "pgrep -x wofi >/dev/null && pkill wofi && exit 0; choice=$(printf 'region\\nscreen\\nstop' | wofi --dmenu --prompt 'record'); case \"$choice\" in region) pkill -INT wf-recorder || wf-recorder -g \"$(slurp)\" -f \"$HOME/Videos/recording-$(date +%F-%H%M%S).mp4\" ;; screen) pkill -INT wf-recorder || wf-recorder -f \"$HOME/Videos/recording-$(date +%F-%H%M%S).mp4\" ;; stop) pkill -INT wf-recorder ;; esac"; }
     Mod+Alt+R { spawn "sh" "-c" "pkill -INT wf-recorder || wf-recorder -g \"$(slurp)\" -f $HOME/Videos/recording-$(date +%F-%H%M%S).mp4"; }
     Ctrl+Alt+R { spawn "sh" "-c" "pkill -INT wf-recorder || wf-recorder -f $HOME/Videos/recording-$(date +%F-%H%M%S).mp4"; }
     Mod+Shift+T { spawn "sh" "-c" "grim -g \"$(slurp)\" /tmp/niri-ocr.png && tesseract -l eng /tmp/niri-ocr.png - | wl-copy && rm /tmp/niri-ocr.png"; }
