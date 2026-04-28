@@ -38,6 +38,7 @@
     wl-clipboard
     wlogout
     wofi
+    wf-recorder
   ];
 
   home.sessionVariables = {
@@ -91,7 +92,6 @@
   };
 
   xdg.configFile = {
-    "hypr".source = ./.config/hypr;
     "niri/config.kdl".source = ./.config/niri/config.kdl;
     "kitty/kitty.conf".source = ./.config/kitty/kitty.conf;
     "nvim".source = ./.config/nvim;

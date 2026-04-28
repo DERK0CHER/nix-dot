@@ -69,6 +69,7 @@ layout {
 prefer-no-csd
 
 spawn-at-startup "swww-daemon" "--format" "xrgb"
+spawn-at-startup "sh" "-c" "test -f $HOME/wallpaper.jpg && swww img $HOME/wallpaper.jpg --transition-type any --transition-duration 1"
 spawn-at-startup "sh" "-c" "/usr/lib/geoclue-2.0/demos/agent & gammastep"
 spawn-at-startup "fcitx5"
 spawn-at-startup "gnome-keyring-daemon" "--start" "--components=secrets"
@@ -126,6 +127,8 @@ binds {
 
     Mod+Shift+S { spawn "sh" "-c" "grim -g \"$(slurp)\" - | wl-copy"; }
     Mod+Shift+Alt+S { spawn "sh" "-c" "grim -g \"$(slurp)\" - | swappy -f -"; }
+    Mod+Alt+R { spawn "sh" "-c" "pkill -INT wf-recorder || wf-recorder -g \"$(slurp)\" -f $HOME/Videos/recording-$(date +%F-%H%M%S).mp4"; }
+    Ctrl+Alt+R { spawn "sh" "-c" "pkill -INT wf-recorder || wf-recorder -f $HOME/Videos/recording-$(date +%F-%H%M%S).mp4"; }
     Mod+Shift+T { spawn "sh" "-c" "grim -g \"$(slurp)\" /tmp/niri-ocr.png && tesseract -l eng /tmp/niri-ocr.png - | wl-copy && rm /tmp/niri-ocr.png"; }
     Mod+Shift+C { spawn "hyprpicker" "-a"; }
     Print { screenshot-screen; }
