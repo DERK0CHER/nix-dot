@@ -1,0 +1,4 @@
+# This file contains fish universal variable definitions.
+# VERSION: 3.0
+SETUVAR --export --path MANPATH:/home/beba/\x2elocal/man/\x1e/home/beba/\x2elocal/man/
+SETUVAR __fish_initialized:4300
