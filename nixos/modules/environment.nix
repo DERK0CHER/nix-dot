@@ -4,7 +4,6 @@
   pkgs,
   ...
 }:
-
 {
   # --- Core Bluetooth ---
   hardware.bluetooth = {
@@ -41,6 +40,9 @@
     ACTION=="add", SUBSYSTEM=="bluetooth", TEST=="power/control", ATTR{power/control}="on"
   '';
 
+  # --- Keyboard ---
+  services.xserver.xkb.options = "caps:swapescape";
+
   # --- Time/Locale ---
   time.timeZone = "Europe/Berlin";
   i18n.defaultLocale = "en_US.UTF-8";
@@ -55,10 +57,21 @@
   programs.dconf.enable = true;
 
   # --- Portals ---
-  xdg.portal = {
-    enable = true;
-    extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
-  };
+xdg.portal = {
+  enable = true;
+  config.common.default = "gtk"; # Zwinge GTK als Fallback
+  extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+};
+
+# WICHTIG: Erlaube Flatpak den Zugriff auf die Grafiktreiber von NixOS
+hardware.graphics.enable = true;
+hardware.graphics.enable32Bit = true; # Oft nötig für Flatpak-Runtimes
+  # 3. Support für Trash und File-Operations
+  # Ohne GVfs schlagen Trash-Portal-Aufrufe weiterhin fehl
+  services.gvfs.enable = true;
+
+  # 4. Flatpak selbst aktivieren
+  services.flatpak.enable = true;
 
   environment.systemPackages = with pkgs; [ waybar ];
 

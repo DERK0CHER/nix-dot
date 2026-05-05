@@ -7,6 +7,7 @@
   environment.systemPackages = with pkgs; [
     # Terminal & editor
     kitty
+    claude-code
     fastfetch
     neovim
     gnome-builder
@@ -52,13 +53,17 @@
     waybar
     wofi
     dunst
-    hyprshot # screenshots
+    hyprshot
     hyprcursor
-    slurp # region selection
-    wl-clipboard
-    dunst
     hyprpaper
-    evolve-core
+    slurp
+    grim
+    wl-clipboard
+    wf-recorder   # screen recording
+    obs-studio
+    swappy        # screenshot annotation
+    brightnessctl
+    cliphist
 
     #dev stuff
     gcc
@@ -71,8 +76,8 @@
     pnpm
 
     # Node formatters
-    nodePackages.prettier
-    nodePackages.eslint_d
+    prettier
+    eslint_d
 
     # Python formatters
     black
@@ -91,6 +96,7 @@
 
   # Fonts for Hyprland
   fonts.packages = with pkgs; [
+    fira-mono
     noto-fonts
     noto-fonts-color-emoji
     font-awesome

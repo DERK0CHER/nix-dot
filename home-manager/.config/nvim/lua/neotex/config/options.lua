@@ -135,20 +135,19 @@ function M.setup()
     once = true
   })
 
-  -- CLIPBOARD -- (for yanky)
-  -- May help Arch/Debian Linux users
-  -- vim.g.clipboard = {
-  --   name = "xsel_override",
-  --   copy = {
-  --     ["+"] = "xsel --input --clipboard",
-  --     ["*"] = "xsel --input --primary",
-  --   },
-  --   paste = {
-  --     ["+"] = "xsel --output --clipboard",
-  --     ["*"] = "xsel --output --primary",
-  --   },
-  --   cache_enabled = 1,
-  -- }
+  -- CLIPBOARD -- explicit wl-clipboard for Wayland
+  vim.g.clipboard = {
+    name = "wl-clipboard",
+    copy = {
+      ["+"] = "wl-copy",
+      ["*"] = "wl-copy --primary",
+    },
+    paste = {
+      ["+"] = "wl-paste --no-newline",
+      ["*"] = "wl-paste --no-newline --primary",
+    },
+    cache_enabled = 0,
+  }
   
   -- Performance optimizations
   -- Reduce the frequency of status line updates

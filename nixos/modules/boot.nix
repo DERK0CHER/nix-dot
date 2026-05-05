@@ -9,6 +9,7 @@
 
   # Required for ZFS imports at boot
   networking.hostId = "d1c53402";
+  boot.zfs.forceImportRoot = false;
 
   # EFI bootloader
   boot.loader.systemd-boot.enable = true;

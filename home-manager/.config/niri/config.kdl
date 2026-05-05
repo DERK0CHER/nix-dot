@@ -76,7 +76,7 @@ layout {
 prefer-no-csd
 
 spawn-at-startup "swww-daemon" "--format" "xrgb"
-spawn-at-startup "sh" "-c" "test -f $HOME/wallpaper.jpg && swww img $HOME/wallpaper.jpg --transition-type any --transition-duration 1"
+spawn-at-startup "sh" "-c" "test -f $HOME/Pictures/wall.jpg && swww img $HOME/Pictures/wall.jpg --transition-type any --transition-duration 1"
 spawn-at-startup "sh" "-c" "/usr/lib/geoclue-2.0/demos/agent & gammastep"
 spawn-at-startup "fcitx5"
 spawn-at-startup "gnome-keyring-daemon" "--start" "--components=secrets"
@@ -156,6 +156,9 @@ binds {
     Mod+Shift+Up { move-window-up; }
     Mod+Shift+Down { move-window-down; }
     Mod+Alt+Space { toggle-window-floating; }
+    // Toggle moving the focused *floating* window by a fixed offset.
+    // Press again to undo for the same focused window.
+    Mod+Alt+M { spawn "sh" "-c" "id=$(niri msg focused-window | awk '/Window ID/ {sub(/:$/, \"\", $3); print $3; exit}'); state_file=/tmp/niri-move-floating-toggle; if [ -f \"$state_file\" ]; then read prev_id moved < \"$state_file\"; else prev_id=''; moved='0'; fi; if [ \"$prev_id\" = \"$id\" ] && [ \"$moved\" = '1' ]; then niri msg action move-floating-window --id \"$id\" -x -100 -y -200; echo \"$id 0\" > \"$state_file\"; else niri msg action move-floating-window --id \"$id\" -x 100 -y 200; echo \"$id 1\" > \"$state_file\"; fi"; }
     Mod+F { fullscreen-window; }
     Mod+D { maximize-column; }
     Mod+Minus { set-column-width "-10%"; }
@@ -206,10 +209,10 @@ binds {
     Mod+Alt+Slash { spawn "sh" "-c" "pkill fuzzel || fuzzel"; }
 
     Mod+Shift+N { spawn "sh" "-c" "playerctl next || playerctl position `bc <<< \"100 * $(playerctl metadata mpris:length) / 1000000 / 100\"`"; }
-    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
-    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+    XF86AudioNext allow-when-locked= true { spawn "playerctl" "next"; }
+    XF86AudioPrev allow-when-locked= true { spawn "playerctl" "previous"; }
     Mod+Shift+B { spawn "playerctl" "previous"; }
     Mod+Shift+P { spawn "playerctl" "play-pause"; }
-    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
-    XF86AudioPause allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioPlay allow-when-locked= true { spawn "playerctl" "play-pause"; }
+    XF86AudioPause allow-when-locked= true { spawn "playerctl" "play-pause"; }
 }

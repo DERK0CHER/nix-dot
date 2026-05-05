@@ -52,7 +52,7 @@ end
 -- Validate and fix lockfile if needed
 local function validate_lockfile()
   return with_error_handling(function()
-    local lockfile = vim.fn.stdpath("config") .. "/lazy-lock.json"
+    local lockfile = vim.fn.stdpath("data") .. "/lazy-lock.json"
     if vim.fn.filereadable(lockfile) == 1 then
       -- Read the file content
       local content = table.concat(vim.fn.readfile(lockfile), "\n")
@@ -85,6 +85,7 @@ local function setup_lazy()
         { import = "neotex.plugins" },    -- main plugins directory
         { import = "neotex.plugins.lsp" }, -- lsp plugins directory
       }, {
+        lockfile = vim.fn.stdpath("data") .. "/lazy-lock.json",
         install = {
           colorscheme = { "gruvbox" },
         },
@@ -127,6 +128,7 @@ local function setup_lazy()
         -- Phase 4 imports
         { import = "neotex.plugins.ai" },      -- AI tooling plugins
       }, {
+        lockfile = vim.fn.stdpath("data") .. "/lazy-lock.json",
         install = {
           colorscheme = { "gruvbox" },
         },

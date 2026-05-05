@@ -1,0 +1,48 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 36,
+    "margin-top": 6,
+    "margin-left": 12,
+    "margin-right": 12,
+    "spacing": 0,
+
+    "modules-left": ["hyprland/workspaces"],
+    "modules-center": [],
+    "modules-right": ["network", "clock"],
+
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "1":  "Ⅰ",
+            "2":  "Ⅱ",
+            "3":  "Ⅲ",
+            "4":  "Ⅳ",
+            "5":  "Ⅴ",
+            "6":  "Ⅵ",
+            "7":  "Ⅶ",
+            "8":  "Ⅷ",
+            "9":  "Ⅸ",
+            "10": "Ⅹ"
+        },
+        "persistent-workspaces": {
+            "*": [1, 2, 3, 4, 5]
+        },
+        "on-click": "activate"
+    },
+
+    "network": {
+        "interface": "e*",
+        "format-ethernet": "eth",
+        "format-disconnected": "no eth",
+        "format-linked": "eth (no ip)",
+        "tooltip-format-ethernet": "{ipaddr}/{cidr}\n{ifname}",
+        "tooltip-format-disconnected": "disconnected"
+    },
+
+    "clock": {
+        "format": "{:%H:%M}",
+        "format-alt": "{:%Y-%m-%d  %H:%M}",
+        "tooltip-format": "<tt>{calendar}</tt>"
+    }
+}

@@ -1,12 +1,13 @@
 
 return {
-    "nyoom-engineering/oxocarbon.nvim",
-    lazy = false,     -- load early so colors apply immediately
+    "morhetz/gruvbox",
+    lazy = false,
     priority = 1000,
     config = function()
       vim.opt.termguicolors = true
-      vim.opt.background = "dark"  -- or "light"
-      vim.cmd.colorscheme("oxocarbon")
+      vim.opt.background = "dark"
+      vim.g.gruvbox_contrast_dark = "medium"
+      vim.cmd.colorscheme("gruvbox")
     end,
   }
 

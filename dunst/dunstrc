@@ -1,0 +1,83 @@
+[global]
+    monitor = 0
+    follow = mouse
+
+    width = (0, 360)
+    height = 200
+    origin = top-right
+    offset = 12x12
+    scale = 0
+    notification_limit = 5
+
+    progress_bar = true
+    progress_bar_height = 4
+    progress_bar_frame_width = 0
+    progress_bar_min_width = 150
+    progress_bar_max_width = 300
+    progress_bar_corner_radius = 2
+
+    indicate_hidden = yes
+    transparency = 18
+    separator_height = 1
+    padding = 14
+    horizontal_padding = 14
+    text_icon_padding = 10
+    frame_width = 1
+    frame_color = "#2a2a3a"
+    gap_size = 6
+    separator_color = "#2a2a3a"
+    sort = yes
+
+    font = JetBrains Mono 11
+    line_height = 2
+    markup = full
+    format = "<b>%s</b>\n%b"
+    alignment = left
+    vertical_alignment = center
+    show_age_threshold = 60
+    ellipsize = middle
+    ignore_newline = no
+    stack_duplicates = true
+    hide_duplicate_count = false
+    show_indicators = no
+
+    icon_theme = "Adwaita"
+    enable_recursive_icon_lookup = true
+    icon_position = left
+    min_icon_size = 32
+    max_icon_size = 48
+    icon_corner_radius = 4
+
+    sticky_history = yes
+    history_length = 20
+
+    browser = /usr/bin/xdg-open
+    always_run_script = true
+    title = Dunst
+    class = Dunst
+    corner_radius = 12
+
+    mouse_left_click = close_current
+    mouse_middle_click = do_action, close_current
+    mouse_right_click = close_all
+
+    layer = overlay
+    force_xwayland = false
+
+[urgency_low]
+    background = "#0f0f14"
+    foreground = "#a0a0b0"
+    frame_color = "#1e1e2e"
+    timeout = 4
+
+[urgency_normal]
+    background = "#0f0f14"
+    foreground = "#d0d0e0"
+    frame_color = "#2a2a3a"
+    timeout = 7
+
+[urgency_critical]
+    background = "#1a0f14"
+    foreground = "#f38ba8"
+    frame_color = "#f38ba8"
+    timeout = 0
