@@ -37,6 +37,8 @@ xfce4/
 Cursor/
 VSCodium/
 Signal/
+LM Studio/
+LM-Studio/
 
 # Generated user dirs / MIME settings
 user-dirs.dirs
@@ -49,3 +51,8 @@ easyeffects/
 
 # Home Manager managed symlinks (point into nix store)
 systemd/
+nvim
+fish/
+foot/
+kitty/
+niri/

@@ -8,6 +8,7 @@
     # Terminal & editor
     kitty
     claude-code
+    lmstudio
     fastfetch
     neovim
     gnome-builder
