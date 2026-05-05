@@ -1,15 +1,48 @@
-$HOME/
-nixos/$HOME/
-gnome-bui*
-gnome-ini*
-moz*
-VS*
-user*
-Curs*
-env*
-Sig*
-sig*
-dconf/
-dconf*
-easy*
+# Browser data
+chromium/
+mozilla/
+
+# Runtime IPC sockets
+ibus/bus/
+
+# Application runtime / user data
+spotify/
+evolution/
+pulse/
+enchant/
+
+# Vesktop runtime
+vesktop/Crashpad/
+vesktop/state.json
 vesktop/sessionData/
+
+# fcitx runtime
+fcitx/dbus/
+fcitx5/conf/cached_layouts
+
+# GNOME runtime / settings files
+.gsd-keyboard.settings-ported
+gnome-builder/
+gnome-initial-setup-done
+monitors.xml
+monitors.xml~
+
+# Binary settings database (use dconf dump for reproducible export)
+dconf/
+
+# Old / unused configs
+xfce4/
+
+# IDE / app data
+Cursor/
+VSCodium/
+Signal/
+
+# Generated user dirs / MIME settings
+user-dirs.dirs
+user-dirs.locale
+mimeapps.list
+environment.d/
+
+# EasyEffects
+easyeffects/
