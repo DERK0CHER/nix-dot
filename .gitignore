@@ -46,3 +46,6 @@ environment.d/
 
 # EasyEffects
 easyeffects/
+
+# Home Manager managed symlinks (point into nix store)
+systemd/
