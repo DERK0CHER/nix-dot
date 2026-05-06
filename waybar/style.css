@@ -1,61 +1,59 @@
+/* GNOME-style top bar, transparent */
+
 * {
     border: none;
     border-radius: 0;
-    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    font-family: "Cantarell", "Inter", "JetBrainsMono Nerd Font", sans-serif;
     font-size: 13px;
+    font-weight: 500;
     min-height: 0;
 }
 
 window#waybar {
     background: rgba(10, 10, 15, 0.55);
-    color: #e0e0e0;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #ffffff;
 }
 
 /* -------- workspaces -------- */
 #workspaces {
-    padding: 0 6px;
+    padding: 0 4px;
 }
 
 #workspaces button {
-    padding: 4px 10px;
-    color: rgba(200, 200, 200, 0.45);
+    padding: 0 8px;
+    margin: 4px 2px;
+    color: rgba(255, 255, 255, 0.45);
     background: transparent;
-    border-radius: 8px;
-    transition: all 0.15s ease;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 #workspaces button:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e0e0e0;
+    background: rgba(255, 255, 255, 0.10);
+    color: #ffffff;
 }
 
 #workspaces button.active {
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.18);
 }
 
 #workspaces button.urgent {
-    color: #f38ba8;
+    color: #ff7b63;
 }
 
 /* -------- network & clock -------- */
 #network,
 #clock {
-    padding: 4px 14px;
-    color: rgba(200, 200, 200, 0.75);
-    border-radius: 8px;
-}
-
-#network {
-    margin-right: 2px;
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 #network.disconnected {
-    color: rgba(200, 80, 80, 0.8);
+    color: rgba(255, 120, 120, 0.85);
 }
 
 #clock {
-    color: #e0e0e0;
+    font-weight: 600;
+    color: #ffffff;
 }
