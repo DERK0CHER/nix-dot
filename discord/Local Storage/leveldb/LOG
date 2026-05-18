@@ -1,9 +1,0 @@
-2026/05/17-20:37:53.151 1aa8b3 Reusing MANIFEST /home/beba/.config/discord/Local Storage/leveldb/MANIFEST-000001
-2026/05/17-20:37:53.164 1aa8b3 Recovering log #4
-2026/05/17-20:37:53.165 1aa8b3 Reusing old log /home/beba/.config/discord/Local Storage/leveldb/000004.log 
-2026/05/17-20:38:53.168 1aa8b4 Level-0 table #8: started
-2026/05/17-20:38:53.171 1aa8b4 Level-0 table #8: 49693 bytes OK
-2026/05/17-20:38:53.173 1aa8b4 Delete type=0 #4
-2026/05/17-20:48:33.371 1aa8b4 Level-0 table #10: started
-2026/05/17-20:48:33.427 1aa8b4 Level-0 table #10: 4342808 bytes OK
-2026/05/17-20:48:33.432 1aa8b4 Delete type=0 #7

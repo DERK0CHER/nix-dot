@@ -39,6 +39,12 @@ VSCodium/
 Signal/
 LM Studio/
 LM-Studio/
+JetBrains/
+discord/
+plnr/
+
+# xdg-desktop-menu auto-generated dummy
+menus/
 
 # Generated user dirs / MIME settings
 user-dirs.dirs
