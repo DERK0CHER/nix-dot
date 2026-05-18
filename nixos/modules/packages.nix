@@ -14,8 +14,6 @@
     gnome-builder
     zathura
     vscodium
-    jetbrains.webstorm
-    jetbrains.clion
     gparted
     code-cursor
     chromium
@@ -93,6 +91,9 @@
     pkgs.python313Packages.pylatexenc
     #garmin
     steam
+
+    # Remote access
+    wayvnc
   ];
 
   # Fonts for Hyprland

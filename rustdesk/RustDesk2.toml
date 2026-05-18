@@ -1,0 +1,13 @@
+rendezvous_server = 'rs-ny.rustdesk.com:21116'
+nat_type = 2
+serial = 0
+unlock_pin = ''
+trusted_devices = '004RQ0TH9KrgFudHaKEYx9/M4G'
+
+[options]
+approve-mode = 'password'
+verification-method = 'use-permanent-password'
+av1-test = 'Y'
+direct-server = 'Y'
+local-ip-addr = '192.168.10.116'
+allow-remote-config-modification = 'Y'

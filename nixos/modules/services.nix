@@ -1,5 +1,5 @@
 #/etc/nixos/modules/services.nix
-{ config, ... }:
+{ config, pkgs, ... }:
 
 {
 
@@ -11,5 +11,11 @@
 
   # Enable CUPS for printing (optional)
    services.printing.enable = true;
+
+  services.ollama = {
+    enable = true;
+    package = pkgs.ollama-rocm;
+  };
+
 }
 

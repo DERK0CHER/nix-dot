@@ -8,7 +8,7 @@
 
   # Use GDM for Wayland sessions
   services.displayManager.gdm.enable = true;
-  services.displayManager.defaultSession = "gnome";
+  services.displayManager.defaultSession = "hyprland";
 
   programs.hyprland = {
     enable = true;

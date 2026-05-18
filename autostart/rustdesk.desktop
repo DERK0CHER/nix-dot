@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=RustDesk
+Comment=Remote desktop access (autostart for remote week)
+Exec=env XDG_SESSION_TYPE=x11 DISPLAY=:0 rustdesk
+Icon=rustdesk
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=false

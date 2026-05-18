@@ -1,0 +1,5 @@
+2026/05/10-15:50:53.949 2bf5 Creating DB /home/beba/.config/discord/Local Storage/leveldb since it was missing.
+2026/05/10-15:50:53.988 2bf5 Reusing MANIFEST /home/beba/.config/discord/Local Storage/leveldb/MANIFEST-000001
+2026/05/10-16:01:17.564 2bf6 Level-0 table #5: started
+2026/05/10-16:01:17.623 2bf6 Level-0 table #5: 4113739 bytes OK
+2026/05/10-16:01:17.629 2bf6 Delete type=0 #3
