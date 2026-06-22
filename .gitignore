@@ -62,3 +62,17 @@ fish/
 foot/
 kitty/
 niri/
+
+# Syncthing device IDs / folder shares (private)
+nixos/modules/syncthing-local.nix
+
+# Secrets — credentials, private keys, tokens (NEVER commit)
+rclone/
+syncthing/
+
+# Application runtime / user data
+ZenNotes/
+go/
+libreoffice/
+nextjs-nodejs/
+turborepo/

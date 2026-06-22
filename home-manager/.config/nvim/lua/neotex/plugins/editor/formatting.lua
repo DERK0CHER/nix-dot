@@ -35,6 +35,9 @@ return {
         -- Shell (remove if not needed)
         sh = { "shfmt" },
 
+        -- Nix
+        nix = { "alejandra" },
+
         -- LaTeX (remove if not needed)
         tex = { "latexindent" },
 
@@ -64,6 +67,7 @@ return {
         local allow = {
           "javascript", "typescript", "javascriptreact", "typescriptreact",
           "json", "html", "css", "scss", "markdown", "yaml",
+          "nix",
           -- add/remove here; e.g. "lua", "python", etc.
         }
         local ft = vim.bo[bufnr].filetype

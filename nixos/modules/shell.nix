@@ -1,9 +1,11 @@
-{ config, pkgs, ... }:
-
 {
+  config,
+  pkgs,
+  ...
+}: {
   environment.systemPackages = with pkgs; [
     fish
-    oh-my-fish  # Install OMF package if available in nixpkgs
+    oh-my-fish # Install OMF package if available in nixpkgs
   ];
 
   programs.fish = {
@@ -16,4 +18,3 @@
     '';
   };
 }
-

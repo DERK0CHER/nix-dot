@@ -1,9 +1,9 @@
 #/etc/nixos/modules/packages.nix
-
-{ config, pkgs, ... }:
-
 {
-
+  config,
+  pkgs,
+  ...
+}: {
   environment.systemPackages = with pkgs; [
     # Terminal & editor
     kitty
@@ -21,10 +21,12 @@
     tor
     # Browser
     firefox
+    tor-browser
     wireplumber
     pulseaudio
-   flatpak 
-   texliveFull
+    flatpak
+    texliveFull
+    libreoffice-fresh
 
     # System utilities
     git
@@ -41,7 +43,6 @@
     # Communication
     discord
     vesktop
-    signal-desktop
     thunderbird
 
     #Amenity
@@ -58,9 +59,9 @@
     slurp
     grim
     wl-clipboard
-    wf-recorder   # screen recording
+    wf-recorder # screen recording
     obs-studio
-    swappy        # screenshot annotation
+    swappy # screenshot annotation
     brightnessctl
     cliphist
 
@@ -87,6 +88,7 @@
     shfmt
     clang-tools # for clang-format
     nixfmt
+    alejandra
     gsettings-desktop-schemas
     pkgs.python313Packages.pylatexenc
     #garmin
@@ -107,7 +109,6 @@
     iosevka-comfy.comfy-motion
     iosevka-comfy.comfy-fixed
     iosevka
-
   ];
   programs.thunar.enable = true;
   programs.waybar.enable = true;

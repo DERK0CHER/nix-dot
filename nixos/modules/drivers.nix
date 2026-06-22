@@ -1,6 +1,8 @@
-{ config, pkgs, ... }:
-
 {
+  config,
+  pkgs,
+  ...
+}: {
   # AMD/Mesa graphics stack
   hardware.graphics = {
     enable = true;
@@ -18,10 +20,9 @@
   };
 
   # AMD CPU/GPU scheduling and firmware defaults for Ryzen + RDNA cards.
-  boot.kernelParams = [ "amd_pstate=active" ];
+  boot.kernelParams = ["amd_pstate=active" "mem_sleep_default=deep"];
   hardware.enableRedistributableFirmware = true;
   powerManagement.cpuFreqGovernor = "schedutil";
 
-  services.xserver.videoDrivers = [ "amdgpu" ];
-
+  services.xserver.videoDrivers = ["amdgpu"];
 }

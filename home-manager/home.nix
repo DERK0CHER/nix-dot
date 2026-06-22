@@ -1,6 +1,9 @@
-{ config, pkgs, lib, ... }:
-
 {
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   home.username = "beba";
   home.homeDirectory = "/home/beba";
   home.stateVersion = "25.05";
@@ -39,8 +42,16 @@
     wlogout
     wofi
     wf-recorder
+    signal-desktop
   ];
-
+  xdg.desktopEntries.signal-desktop = {
+    name = "Signal";
+    exec = "signal-desktop --password-store=basic_text %U";
+    icon = "signal-desktop";
+    terminal = false;
+    categories = ["Network" "InstantMessaging"];
+    mimeType = ["x-scheme-handler/sgnl" "x-scheme-handler/signalcaptcha"];
+  };
   home.sessionVariables = {
     QT_IM_MODULE = "fcitx";
     XMODIFIERS = "@im=fcitx";
