@@ -22,3 +22,6 @@ wofi.target     = '~/.cache/wallust/wofi.css'
 
 dunst.template  = 'dunstrc'
 dunst.target    = '~/.cache/wallust/dunstrc'
+
+rofi.template   = 'rofi.rasi'
+rofi.target     = '~/.cache/wallust/rofi.rasi'

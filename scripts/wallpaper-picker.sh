@@ -22,7 +22,8 @@ pick() {
     for w in "$WALLS"/*; do
         [ -f "$w" ] || continue
         printf '%s\0icon\x1f%s\n' "$w" "$THUMBS/$(basename "$w")"
-    done | rofi -dmenu -i -config "$ROFI_CFG" -p "Wallpaper"
+    done | rofi -dmenu -i -config "$ROFI_CFG" -p "Wallpaper" \
+        -kb-accept-entry "Return,KP_Enter,space"
 }
 
 # Build a screen-sized image for one output: the source scaled to fill the
@@ -80,15 +81,19 @@ apply() {
     fi
     # Regenerate the palette and render all templates to ~/.cache/wallust.
     wallust run "$wall"
-    # Each monitor gets its own composite, sized to that output's resolution.
-    local name w h out
+    # Phase 1: build every monitor's composite first (slow, sequential).
+    local name w h names=()
     while read -r name w h; do
         [ -n "$name" ] || continue
-        out="$HOME/.cache/wallust/wall-${name}.png"
-        compose "$wall" "$w" "$h" "$out"
-        awww img -o "$name" "$out" --resize crop \
-            --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
+        compose "$wall" "$w" "$h" "$HOME/.cache/wallust/wall-${name}.png"
+        names+=("$name")
     done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.width) \(.height)"')
+    # Phase 2: fire all outputs at once so the transitions stay in sync.
+    for name in "${names[@]}"; do
+        awww img -o "$name" "$HOME/.cache/wallust/wall-${name}.png" --resize crop \
+            --transition-type fade --transition-duration 1.5 --transition-fps 60 &
+    done
+    wait
     echo "$wall" > "$LAST"
     # Live-reload everything that reads the generated files.
     pkill -SIGUSR1 kitty 2>/dev/null || true          # kitty re-reads its includes
@@ -100,6 +105,11 @@ apply() {
 if [ $# -ge 1 ]; then
     WALL="$1"
 else
+    # Toggle like wofi: if the picker is already open, close it and stop.
+    if pgrep -x rofi >/dev/null 2>&1; then
+        pkill -x rofi
+        exit 0
+    fi
     WALL="$(pick)"
 fi
 [ -n "${WALL:-}" ] || exit 0
