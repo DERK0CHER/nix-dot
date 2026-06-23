@@ -9,7 +9,8 @@ the whole desktop recolors from it.
 ```
 Super+Shift+W → rofi thumbnail picker (~/Pictures/wallpapers)
             → per-monitor composite (image at full height, centered;
-              sides filled with the edge colors + subtle noise)
+              sides filled by "smouching" the edge colors — scattered
+              + softened into a uniform grainy cloud)
             → awww sets each output (fade transition)
             → wallust extracts a 16-color palette
             → renders templates to ~/.cache/wallust/

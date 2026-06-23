@@ -26,9 +26,24 @@ pick() {
 }
 
 # Build a screen-sized image for one output: the source scaled to fill the
-# screen height and centered, with each side filled by the image's outermost
-# edge column stretched across the gap and given subtle per-pixel noise — a
-# grainy, near-uniform texture that matches the colors at the image edge.
+# screen height and centered, with each side gap filled by taking a strip of
+# the image's edge and "smouching" it — randomly scattering (-spread) and
+# softening (-blur) the edge pixels into a uniform cloud of those colors,
+# plus a touch of grain. No directional streaks.
+SMOUCH_STRIP=80     # px of edge sampled as the source pattern
+SMOUCH_SPREAD=70    # random pixel displacement radius (the "smouch")
+SMOUCH_BLUR="0x10"  # softening after scattering
+
+# smouch <mid.png> <gravity West|East> <pad_w> <h> <out>
+smouch() {
+    local mid="$1" grav="$2" pw="$3" h="$4" out="$5"
+    local strip=$SMOUCH_STRIP
+    magick "$mid" -gravity "$grav" -crop "${strip}x${h}+0+0" +repage \
+        -resize "${pw}x${h}!" \
+        -virtual-pixel mirror -spread "$SMOUCH_SPREAD" -blur "$SMOUCH_BLUR" \
+        -attenuate 0.25 +noise Gaussian "$out"
+}
+
 compose() {
     local src="$1" w="$2" h="$3" out="$4"
     local sw
@@ -44,14 +59,12 @@ compose() {
     magick "$src" -resize "x${h}" "$tmp/mid.png"
     local parts=()
     if [ "$padL" -gt 0 ]; then
-        magick "$tmp/mid.png" -gravity West -crop "1x${h}+0+0" +repage \
-            -resize "${padL}x${h}!" -attenuate 0.4 +noise Gaussian "$tmp/l.png"
+        smouch "$tmp/mid.png" West "$padL" "$h" "$tmp/l.png"
         parts+=("$tmp/l.png")
     fi
     parts+=("$tmp/mid.png")
     if [ "$padR" -gt 0 ]; then
-        magick "$tmp/mid.png" -gravity East -crop "1x${h}+0+0" +repage \
-            -resize "${padR}x${h}!" -attenuate 0.4 +noise Gaussian "$tmp/r.png"
+        smouch "$tmp/mid.png" East "$padR" "$h" "$tmp/r.png"
         parts+=("$tmp/r.png")
     fi
     magick "${parts[@]}" +append "$out"
