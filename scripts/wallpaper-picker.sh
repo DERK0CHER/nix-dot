@@ -9,6 +9,7 @@ WALLS="${WALLPAPER_DIR:-$HOME/Pictures/wallpapers}"
 THUMBS="$HOME/.cache/wallpaper-thumbnails"
 ROFI_CFG="$HOME/.config/rofi/wallpaper.rasi"
 LAST="$HOME/.cache/wallust/last-wallpaper"
+USAGE="$HOME/.cache/wallust/usage.log"          # "<epoch>\t<path>" per apply
 
 mkdir -p "$THUMBS" "$HOME/.cache/wallust"
 
@@ -19,8 +20,21 @@ pick() {
         local t="$THUMBS/$(basename "$w")"
         [ -f "$t" ] || magick "$w" -strip -thumbnail '400x400^' -gravity center -extent '400x400' "$t" 2>/dev/null || true
     done
+    # Count how often each wallpaper was used in the last 24h, most-used first.
+    local now cutoff
+    now="$(date +%s)"; cutoff=$(( now - 86400 ))
+    declare -A cnt
+    if [ -f "$USAGE" ]; then
+        while IFS=$'\t' read -r ts path; do
+            [ -n "${ts//[!0-9]/}" ] || continue
+            [ "$ts" -ge "$cutoff" ] 2>/dev/null && cnt["$path"]=$(( ${cnt["$path"]:-0} + 1 ))
+        done < "$USAGE"
+    fi
+    # Emit "<count>\t<path>", sort by count desc then name, feed to rofi.
     for w in "$WALLS"/*; do
         [ -f "$w" ] || continue
+        printf '%d\t%s\n' "${cnt[$w]:-0}" "$w"
+    done | sort -t$'\t' -k1,1nr -k2,2 | while IFS=$'\t' read -r _ w; do
         printf '%s\0icon\x1f%s\n' "$w" "$THUMBS/$(basename "$w")"
     done | rofi -dmenu -i -config "$ROFI_CFG" -p "Wallpaper" \
         -kb-accept-entry "Return,KP_Enter,space"
@@ -84,21 +98,34 @@ apply() {
     # Recolor the system cursor to match (slow recompile, so run it detached).
     [ -x "$HOME/.config/scripts/recolor-cursor.sh" ] && \
         "$HOME/.config/scripts/recolor-cursor.sh" "$cursorcol" >/dev/null 2>&1 &
-    # Phase 1: build every monitor's composite, all in parallel.
-    local name w h names=()
+    # Phase 1: build each monitor's composite, reusing a cached one when this
+    # wallpaper was already rendered at that resolution (keyed by path+mtime+WxH).
+    local cdir="$HOME/.cache/wallpaper-composites"
+    local wmtime; wmtime="$(stat -c %Y "$wall" 2>/dev/null || echo 0)"
+    mkdir -p "$cdir"
+    local name w h key names=() caches=()
     while read -r name w h; do
         [ -n "$name" ] || continue
-        compose "$wall" "$w" "$h" "$HOME/.cache/wallust/wall-${name}.png" &
-        names+=("$name")
+        key="$(printf '%s' "${wall}|${wmtime}|${w}x${h}" | md5sum | cut -d' ' -f1)"
+        local cache="$cdir/${key}.png"
+        [ -f "$cache" ] || compose "$wall" "$w" "$h" "$cache" &
+        names+=("$name"); caches+=("$cache")
     done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.width) \(.height)"')
     wait
     # Phase 2: fire all outputs at once so the transitions stay in sync.
-    for name in "${names[@]}"; do
-        awww img -o "$name" "$HOME/.cache/wallust/wall-${name}.png" --resize crop \
+    local i
+    for i in "${!names[@]}"; do
+        awww img -o "${names[$i]}" "${caches[$i]}" --resize crop \
             --transition-type fade --transition-duration 0.8 --transition-fps 60 &
     done
     wait
     echo "$wall" > "$LAST"
+    # Record usage, keeping only the last 2 days so the log stays small.
+    printf '%s\t%s\n' "$(date +%s)" "$wall" >> "$USAGE"
+    if [ -f "$USAGE" ]; then
+        local keep; keep=$(( $(date +%s) - 172800 ))
+        awk -F'\t' -v k="$keep" '$1>=k' "$USAGE" > "$USAGE.tmp" 2>/dev/null && mv "$USAGE.tmp" "$USAGE"
+    fi
     # Live-reload everything that reads the generated files.
     pkill -SIGUSR1 kitty 2>/dev/null || true          # kitty re-reads its includes
     pkill -SIGUSR2 waybar 2>/dev/null || true          # waybar reloads CSS
