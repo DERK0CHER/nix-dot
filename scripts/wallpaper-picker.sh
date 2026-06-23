@@ -36,7 +36,7 @@ apply() {
     pkill -SIGUSR1 kitty 2>/dev/null || true          # kitty re-reads its includes
     pkill -SIGUSR2 waybar 2>/dev/null || true          # waybar reloads CSS
     hyprctl reload >/dev/null 2>&1 || true             # hyprland re-sources colors
-    pkill dunst 2>/dev/null && (dunst &) || true       # dunst has no live reload
+    dunstctl reload 2>/dev/null || true                # dunst re-reads its themed config
 }
 
 if [ $# -ge 1 ]; then

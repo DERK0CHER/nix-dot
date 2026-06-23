@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    waylandar.url = "github:samjoshuadud/waylandar";
   };
 
   outputs = inputs @ {

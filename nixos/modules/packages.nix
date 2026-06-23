@@ -2,9 +2,13 @@
 {
   config,
   pkgs,
+  inputs,
   ...
 }: {
   environment.systemPackages = with pkgs; [
+    # Calendar/agenda widget (theming-experiments)
+    inputs.waylandar.packages.${pkgs.system}.default
+
     # Terminal & editor
     kitty
     claude-code

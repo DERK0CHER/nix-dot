@@ -19,3 +19,6 @@ waybar.target   = '~/.cache/wallust/waybar.css'
 
 wofi.template   = 'wofi.css'
 wofi.target     = '~/.cache/wallust/wofi.css'
+
+dunst.template  = 'dunstrc'
+dunst.target    = '~/.cache/wallust/dunstrc'
