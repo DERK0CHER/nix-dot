@@ -134,6 +134,9 @@ apply() {
     # fish: universal vars propagate to every open shell (prompt + syntax).
     command -v fish >/dev/null 2>&1 && \
         fish -c "source $HOME/.cache/wallust/colors.fish" 2>/dev/null || true
+    # GTK apps only read gtk.css at startup. nautilus runs as a persistent
+    # service, so quit it (next open re-themes). Open windows will close.
+    pgrep -x nautilus >/dev/null 2>&1 && nautilus -q 2>/dev/null || true
 }
 
 if [ $# -ge 1 ]; then
