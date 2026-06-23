@@ -58,6 +58,10 @@ easyeffects/
 # wallust-generated btop theme (regenerated per wallpaper)
 btop/themes/wallust.theme
 
+# wallust-generated GTK color overrides (regenerated per wallpaper)
+gtk-3.0/gtk.css
+gtk-4.0/gtk.css
+
 # Home Manager managed symlinks (point into nix store)
 systemd/
 nvim

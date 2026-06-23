@@ -32,3 +32,8 @@ fish.target     = '~/.cache/wallust/colors.fish'
 
 btop.template   = 'btop.theme'
 btop.target     = '~/.config/btop/themes/wallust.theme'
+
+gtk3.template   = 'gtk.css'
+gtk3.target     = '~/.config/gtk-3.0/gtk.css'
+gtk4.template   = 'gtk.css'
+gtk4.target     = '~/.config/gtk-4.0/gtk.css'
