@@ -63,7 +63,7 @@
     # Wallpaper + colorscheme switching (theming-experiments)
     swww # runtime wallpaper daemon with transitions
     wallust # generate color palettes from wallpapers
-    rofi-wayland # thumbnail wallpaper picker
+    rofi # thumbnail wallpaper picker (wayland-capable)
     jq
     imagemagick # thumbnail generation
     slurp
