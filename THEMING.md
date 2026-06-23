@@ -8,7 +8,9 @@ the whole desktop recolors from it.
 
 ```
 Super+Shift+W → rofi thumbnail picker (~/Pictures/wallpapers)
-            → awww sets the wallpaper (fade transition)
+            → per-monitor composite (image at full height, centered;
+              sides filled with the edge colors + subtle noise)
+            → awww sets each output (fade transition)
             → wallust extracts a 16-color palette
             → renders templates to ~/.cache/wallust/
             → kitty / waybar / wofi / hyprland live-reload

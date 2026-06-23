@@ -25,6 +25,39 @@ pick() {
     done | rofi -dmenu -i -config "$ROFI_CFG" -p "Wallpaper"
 }
 
+# Build a screen-sized image for one output: the source scaled to fill the
+# screen height and centered, with each side filled by the image's outermost
+# edge column stretched across the gap and given subtle per-pixel noise — a
+# grainy, near-uniform texture that matches the colors at the image edge.
+compose() {
+    local src="$1" w="$2" h="$3" out="$4"
+    local sw
+    sw="$(magick "$src" -format "%[fx:round(w*${h}/h)]" info:)"
+    if [ "$sw" -ge "$w" ]; then
+        # Already covers the width at full height — crop the sides, no fill.
+        magick "$src" -resize "x${h}" -gravity center -extent "${w}x${h}" "$out"
+        return
+    fi
+    local padL=$(( (w - sw) / 2 )) padR
+    padR=$(( w - sw - padL ))
+    local tmp; tmp="$(mktemp -d)"
+    magick "$src" -resize "x${h}" "$tmp/mid.png"
+    local parts=()
+    if [ "$padL" -gt 0 ]; then
+        magick "$tmp/mid.png" -gravity West -crop "1x${h}+0+0" +repage \
+            -resize "${padL}x${h}!" -attenuate 0.4 +noise Gaussian "$tmp/l.png"
+        parts+=("$tmp/l.png")
+    fi
+    parts+=("$tmp/mid.png")
+    if [ "$padR" -gt 0 ]; then
+        magick "$tmp/mid.png" -gravity East -crop "1x${h}+0+0" +repage \
+            -resize "${padR}x${h}!" -attenuate 0.4 +noise Gaussian "$tmp/r.png"
+        parts+=("$tmp/r.png")
+    fi
+    magick "${parts[@]}" +append "$out"
+    rm -rf "$tmp"
+}
+
 apply() {
     local wall="$1"
     # Make sure the wallpaper daemon is up, otherwise `awww img` fails.
@@ -32,14 +65,17 @@ apply() {
         awww-daemon >/dev/null 2>&1 &
         for _ in $(seq 1 30); do awww query >/dev/null 2>&1 && break; sleep 0.1; done
     fi
-    # Generate the palette first so we can read the sandy fill color from it.
+    # Regenerate the palette and render all templates to ~/.cache/wallust.
     wallust run "$wall"
-    local fill; fill="$(tr -d '#[:space:]' < "$HOME/.cache/wallust/fill-color" 2>/dev/null)"
-    [ -n "$fill" ] || fill="000000ff"
-    # Render the image at native size, centered, padded with the sandy fill.
-    # Never let a wallpaper hiccup abort the recolor below.
-    awww img "$wall" --no-resize --fill-color "$fill" \
-        --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
+    # Each monitor gets its own composite, sized to that output's resolution.
+    local name w h out
+    while read -r name w h; do
+        [ -n "$name" ] || continue
+        out="$HOME/.cache/wallust/wall-${name}.png"
+        compose "$wall" "$w" "$h" "$out"
+        awww img -o "$name" "$out" --resize crop \
+            --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
+    done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.width) \(.height)"')
     echo "$wall" > "$LAST"
     # Live-reload everything that reads the generated files.
     pkill -SIGUSR1 kitty 2>/dev/null || true          # kitty re-reads its includes

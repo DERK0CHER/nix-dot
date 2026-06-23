@@ -22,8 +22,3 @@ wofi.target     = '~/.cache/wallust/wofi.css'
 
 dunst.template  = 'dunstrc'
 dunst.target    = '~/.cache/wallust/dunstrc'
-
-# Single sandy tone (RRGGBBAA) used as the awww padding color behind
-# natively-rendered (unscaled) wallpapers.
-fill.template   = 'fill-color'
-fill.target     = '~/.cache/wallust/fill-color'
