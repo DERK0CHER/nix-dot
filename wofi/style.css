@@ -5,6 +5,16 @@
     font-size: 13px;
 }
 
+window,
+#input,
+#text,
+#entry,
+#entry label,
+#input text {
+    font-family: "BB Torsos Pro", "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
 window {
     background: rgba(8, 8, 14, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.08);

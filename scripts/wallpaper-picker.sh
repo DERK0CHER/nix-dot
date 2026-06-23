@@ -30,18 +30,9 @@ pick() {
 # screen height and centered, with each side gap "smouched" from the image's
 # edge — a soft, grainy cloud of the edge colors (no directional streaks).
 #
-# Fast path: crush the edge strip to a tiny image, add grain, then upscale.
-# The upscale interpolation does the smouching for free, so this stays cheap
-# even on big monitors (no full-resolution -spread).
-#
-# smouch <mid.png> <gravity West|East> <pad_w> <h> <out>
-smouch() {
-    local mid="$1" grav="$2" pw="$3" h="$4" out="$5"
-    magick "$mid" -gravity "$grav" -crop "60x${h}+0+0" +repage \
-        -resize '20x96!' -attenuate 0.5 +noise Gaussian \
-        -resize "${pw}x${h}!" -blur 0x4 "$out"
-}
-
+# Done in a single magick pipeline (the scaled image is stashed in an MPR and
+# its edges are scattered/blurred at low res, then upscaled to each gap), so
+# there are no intermediate PNGs or extra processes — that's what made it slow.
 compose() {
     local src="$1" w="$2" h="$3" out="$4"
     local sw
@@ -53,20 +44,18 @@ compose() {
     fi
     local padL=$(( (w - sw) / 2 )) padR
     padR=$(( w - sw - padL ))
-    local tmp; tmp="$(mktemp -d)"
-    magick "$src" -resize "x${h}" "$tmp/mid.png"
-    local parts=()
-    if [ "$padL" -gt 0 ]; then
-        smouch "$tmp/mid.png" West "$padL" "$h" "$tmp/l.png"
-        parts+=("$tmp/l.png")
-    fi
-    parts+=("$tmp/mid.png")
-    if [ "$padR" -gt 0 ]; then
-        smouch "$tmp/mid.png" East "$padR" "$h" "$tmp/r.png"
-        parts+=("$tmp/r.png")
-    fi
-    magick "${parts[@]}" +append "$out"
-    rm -rf "$tmp"
+    [ "$padL" -lt 1 ] && padL=1
+    [ "$padR" -lt 1 ] && padR=1
+    local th=$(( h / 4 + 1 ))   # low-res working height for the smouch texture
+    magick "$src" -resize "x${h}" -write mpr:mid +delete \
+        \( mpr:mid -gravity West -crop "90x${h}+0+0" +repage \
+           -resize "160x${th}!" -virtual-pixel mirror -spread 16 -blur 0x2 \
+           -attenuate 0.3 +noise Gaussian -resize "${padL}x${h}!" \) \
+        mpr:mid \
+        \( mpr:mid -gravity East -crop "90x${h}+0+0" +repage \
+           -resize "160x${th}!" -virtual-pixel mirror -spread 16 -blur 0x2 \
+           -attenuate 0.3 +noise Gaussian -resize "${padR}x${h}!" \) \
+        +append "$out"
 }
 
 apply() {
