@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wallpaper picker → swww transition → wallust recolor → live-reload apps.
+# Wallpaper picker → awww transition → wallust recolor → live-reload apps.
 # Wallpapers are read from ~/Pictures/wallpapers. Run with no args for the
 # rofi thumbnail picker, or pass a path to apply directly (used on login).
 
@@ -27,8 +27,13 @@ pick() {
 
 apply() {
     local wall="$1"
-    # Wallpaper with a fade transition on every output.
-    swww img "$wall" --transition-type fade --transition-duration 1.5 --transition-fps 60
+    # Make sure the wallpaper daemon is up, otherwise `awww img` fails.
+    if ! pgrep -x awww-daemon >/dev/null 2>&1; then
+        awww-daemon >/dev/null 2>&1 &
+        for _ in $(seq 1 30); do awww query >/dev/null 2>&1 && break; sleep 0.1; done
+    fi
+    # Set the wallpaper. Never let a wallpaper hiccup abort the recolor below.
+    awww img "$wall" --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
     # Regenerate the palette and render all templates to ~/.cache/wallust.
     wallust run "$wall"
     echo "$wall" > "$LAST"

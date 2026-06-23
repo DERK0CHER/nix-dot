@@ -8,7 +8,7 @@ the whole desktop recolors from it.
 
 ```
 Super+Shift+W → rofi thumbnail picker (~/Pictures/wallpapers)
-            → swww sets the wallpaper (fade transition)
+            → awww sets the wallpaper (fade transition)
             → wallust extracts a 16-color palette
             → renders templates to ~/.cache/wallust/
             → kitty / waybar / wofi / hyprland live-reload
@@ -37,13 +37,13 @@ Tune the palette mood (`softdark16`, `dark16`, `harddark16`, …) in
 ## Activate
 
 ```sh
-# 1. install deps (swww, wallust, rofi-wayland, jq, imagemagick)
+# 1. install deps (awww, wallust, rofi, jq, imagemagick)
 sudo nixos-rebuild switch
 
 # 2. apply the kitty include
 cd home-manager && home-manager switch --flake .#beba && cd ..
 
-# 3. reload hyprland (picks up swww autostart + the new keybind)
+# 3. reload hyprland (picks up awww autostart + the new keybind)
 hyprctl reload
 
 # 4. drop some wallpapers in ~/Pictures/wallpapers, then:
@@ -75,7 +75,7 @@ if you want one source of truth.
 
 ## Notes
 
-- **hyprpaper** was swapped for **swww** in `execs.conf`; the old static
+- **hyprpaper** was swapped for **awww** (swww fork) in `execs.conf`; the old static
   wallpaper line is gone.
 - Borders are themed but `border_size = 0`, so they're invisible until you bump
   it in `hypr/hyprland/general.conf`.

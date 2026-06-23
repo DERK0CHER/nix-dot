@@ -61,7 +61,7 @@
     hyprcursor
     hyprpaper
     # Wallpaper + colorscheme switching (theming-experiments)
-    swww # runtime wallpaper daemon with transitions
+    awww # runtime wallpaper daemon with transitions (swww fork)
     wallust # generate color palettes from wallpapers
     rofi # thumbnail wallpaper picker (wayland-capable)
     jq
