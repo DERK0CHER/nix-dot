@@ -79,29 +79,31 @@
         cat ~/.cache/ags/user/generated/terminal/sequences.txt
       end
 
-      set -g fish_color_command #ECECE7
       set -gx LS_COLORS "di=01;38;2;158;178;119:fi=03;38;2;222;216;192:ln=38;2;198;194;78:or=38;2;164;0;0:mi=38;2;164;0;0:ex=38;2;255;123;123"
 
       function fish_prompt
-        set -l __salmon  '#ff7b7b'
-        set -l __gold    '#ab8d2e'
-        set -l __beige   '#ded8c0'
+        # Colors come from wallust (universal vars set by the wallpaper picker);
+        # fall back to orange/light if they aren't set yet.
+        set -l accent $wallust_accent
+        set -l fg $wallust_fg
+        test -z "$accent"; and set accent F08A3C
+        test -z "$fg"; and set fg ECECE7
 
-        set_color $__beige
+        set_color $fg
         printf '%s@%s ' $USER (hostname -s)
 
-        set_color $__gold
+        set_color $accent
         printf '%s ' (prompt_pwd)
 
         set -l __fish_git_prompt_showupstream 0
         set -l __fish_git_prompt_use_informative_chars 1
         set -l __fish_git_prompt_char_dirtystate '✱'
-        set -l __fish_git_prompt_color_branch $__gold
-        set -l __fish_git_prompt_color_dirty  $__gold
-        set -l __fish_git_prompt_color_clean  $__gold
+        set -l __fish_git_prompt_color_branch $accent
+        set -l __fish_git_prompt_color_dirty  $accent
+        set -l __fish_git_prompt_color_clean  $accent
         printf '%s ' (fish_git_prompt)
 
-        set_color $__gold
+        set_color $accent
         printf '> '
         set_color normal
       end

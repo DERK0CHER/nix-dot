@@ -87,6 +87,9 @@ apply() {
     pkill -SIGUSR2 waybar 2>/dev/null || true          # waybar reloads CSS
     hyprctl reload >/dev/null 2>&1 || true             # hyprland re-sources colors
     dunstctl reload 2>/dev/null || true                # dunst re-reads its themed config
+    # fish: universal vars propagate to every open shell (prompt + syntax).
+    command -v fish >/dev/null 2>&1 && \
+        fish -c "source $HOME/.cache/wallust/colors.fish" 2>/dev/null || true
 }
 
 if [ $# -ge 1 ]; then

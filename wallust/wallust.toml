@@ -26,3 +26,6 @@ dunst.target    = '~/.cache/wallust/dunstrc'
 
 rofi.template   = 'rofi.rasi'
 rofi.target     = '~/.cache/wallust/rofi.rasi'
+
+fish.template   = 'colors.fish'
+fish.target     = '~/.cache/wallust/colors.fish'
