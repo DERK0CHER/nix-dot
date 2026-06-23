@@ -13,6 +13,7 @@ window,
 #input text {
     font-family: "BB Torsos Pro Ultra", "BB Torsos Pro", "JetBrainsMono Nerd Font", monospace;
     font-size: 13px;
+    font-variant: small-caps;
     letter-spacing: 2px;
 }
 

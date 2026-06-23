@@ -75,6 +75,9 @@ apply() {
     [ -n "$contrast" ] || contrast="2B36EE"
     printf '$contrast = rgb(%s)\n' "$contrast" > "$HOME/.cache/wallust/contrast.conf"
     printf '%s\n' "$contrast" > "$HOME/.cache/wallust/contrast"
+    # Recolor the system cursor to match (slow recompile, so run it detached).
+    [ -x "$HOME/.config/scripts/recolor-cursor.sh" ] && \
+        "$HOME/.config/scripts/recolor-cursor.sh" "$contrast" >/dev/null 2>&1 &
     # Phase 1: build every monitor's composite, all in parallel.
     local name w h names=()
     while read -r name w h; do

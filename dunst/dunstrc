@@ -31,7 +31,7 @@
     font = BB Torsos Pro Ultra 11
     line_height = 2
     markup = full
-    format = "<span letter_spacing='2048'><b>%s</b>\n%b</span>"
+    format = "<span letter_spacing='2048' variant='smallcaps'><b>%s</b></span>\n<span font_family='Sans' font_weight='normal'>%b</span>"
     alignment = left
     vertical_alignment = center
     show_age_threshold = 60

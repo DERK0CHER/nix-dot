@@ -66,6 +66,8 @@
     rofi # thumbnail wallpaper picker (wayland-capable)
     jq
     imagemagick # thumbnail generation
+    hyprcursor # cursor format + hyprcursor-util
+    xcur2png # extract Adwaita for per-wallpaper cursor recoloring
     slurp
     grim
     wl-clipboard
