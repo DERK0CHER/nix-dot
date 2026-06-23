@@ -55,6 +55,9 @@ environment.d/
 # EasyEffects
 easyeffects/
 
+# wallust-generated btop theme (regenerated per wallpaper)
+btop/themes/wallust.theme
+
 # Home Manager managed symlinks (point into nix store)
 systemd/
 nvim

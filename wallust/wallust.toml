@@ -29,3 +29,6 @@ rofi.target     = '~/.cache/wallust/rofi.rasi'
 
 fish.template   = 'colors.fish'
 fish.target     = '~/.cache/wallust/colors.fish'
+
+btop.template   = 'btop.theme'
+btop.target     = '~/.config/btop/themes/wallust.theme'
