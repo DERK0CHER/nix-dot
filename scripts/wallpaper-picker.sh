@@ -67,6 +67,14 @@ apply() {
     fi
     # Regenerate the palette and render all templates to ~/.cache/wallust.
     wallust run "$wall"
+    # Vivid, high-contrast, non-grey color (complement of the wallpaper's mean
+    # hue, forced saturated + mid-light). Used for the active border + cursor.
+    local chue contrast
+    chue="$(magick "$wall" -resize 1x1\! -colorspace HSL -format '%[fx:(u.r*360+180)%360]' info: 2>/dev/null)"
+    contrast="$(magick -size 1x1 "xc:hsl(${chue:-210},85%,55%)" -alpha off -depth 8 -format '%[hex:p{0,0}]' info: 2>/dev/null)"
+    [ -n "$contrast" ] || contrast="2B36EE"
+    printf '$contrast = rgb(%s)\n' "$contrast" > "$HOME/.cache/wallust/contrast.conf"
+    printf '%s\n' "$contrast" > "$HOME/.cache/wallust/contrast"
     # Phase 1: build every monitor's composite, all in parallel.
     local name w h names=()
     while read -r name w h; do

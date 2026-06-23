@@ -32,10 +32,10 @@
     separator_color = "#F08A3C"
     sort = yes
 
-    font = BB Torsos Pro 11
+    font = BB Torsos Pro Ultra 11
     line_height = 2
     markup = full
-    format = "<b>%s</b>\n%b"
+    format = "<span letter_spacing='2048'><b>%s</b>\n%b</span>"
     alignment = left
     vertical_alignment = center
     show_age_threshold = 60

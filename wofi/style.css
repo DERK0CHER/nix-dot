@@ -1,7 +1,7 @@
 @import url("file:///home/beba/.cache/wallust/wofi.css");
 
 * {
-    font-family: "BB Torsos Pro", "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    font-family: "BB Torsos Pro Ultra", "BB Torsos Pro", "JetBrainsMono Nerd Font", monospace;
     font-size: 13px;
 }
 
@@ -11,8 +11,9 @@ window,
 #entry,
 #entry label,
 #input text {
-    font-family: "BB Torsos Pro", "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    font-family: "BB Torsos Pro Ultra", "BB Torsos Pro", "JetBrainsMono Nerd Font", monospace;
     font-size: 13px;
+    letter-spacing: 2px;
 }
 
 window {

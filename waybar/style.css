@@ -5,9 +5,10 @@
 * {
     border: none;
     border-radius: 0;
-    font-family: "BB Torsos Pro", "Cantarell", "Inter", "JetBrainsMono Nerd Font", sans-serif;
+    font-family: "BB Torsos Pro Ultra", "BB Torsos Pro", "Cantarell", "JetBrainsMono Nerd Font", sans-serif;
     font-size: 13px;
     font-weight: 500;
+    letter-spacing: 2px;
     min-height: 0;
 }
 
