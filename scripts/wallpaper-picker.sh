@@ -17,7 +17,7 @@ pick() {
     for w in "$WALLS"/*; do
         [ -f "$w" ] || continue
         local t="$THUMBS/$(basename "$w")"
-        [ -f "$t" ] || magick "$w" -strip -thumbnail '500x300^' -gravity center -extent '500x300' "$t" 2>/dev/null || true
+        [ -f "$t" ] || magick "$w" -strip -thumbnail '400x400^' -gravity center -extent '400x400' "$t" 2>/dev/null || true
     done
     for w in "$WALLS"/*; do
         [ -f "$w" ] || continue
@@ -27,22 +27,19 @@ pick() {
 }
 
 # Build a screen-sized image for one output: the source scaled to fill the
-# screen height and centered, with each side gap filled by taking a strip of
-# the image's edge and "smouching" it — randomly scattering (-spread) and
-# softening (-blur) the edge pixels into a uniform cloud of those colors,
-# plus a touch of grain. No directional streaks.
-SMOUCH_STRIP=80     # px of edge sampled as the source pattern
-SMOUCH_SPREAD=70    # random pixel displacement radius (the "smouch")
-SMOUCH_BLUR="0x10"  # softening after scattering
-
+# screen height and centered, with each side gap "smouched" from the image's
+# edge — a soft, grainy cloud of the edge colors (no directional streaks).
+#
+# Fast path: crush the edge strip to a tiny image, add grain, then upscale.
+# The upscale interpolation does the smouching for free, so this stays cheap
+# even on big monitors (no full-resolution -spread).
+#
 # smouch <mid.png> <gravity West|East> <pad_w> <h> <out>
 smouch() {
     local mid="$1" grav="$2" pw="$3" h="$4" out="$5"
-    local strip=$SMOUCH_STRIP
-    magick "$mid" -gravity "$grav" -crop "${strip}x${h}+0+0" +repage \
-        -resize "${pw}x${h}!" \
-        -virtual-pixel mirror -spread "$SMOUCH_SPREAD" -blur "$SMOUCH_BLUR" \
-        -attenuate 0.25 +noise Gaussian "$out"
+    magick "$mid" -gravity "$grav" -crop "60x${h}+0+0" +repage \
+        -resize '20x96!' -attenuate 0.5 +noise Gaussian \
+        -resize "${pw}x${h}!" -blur 0x4 "$out"
 }
 
 compose() {
@@ -81,17 +78,18 @@ apply() {
     fi
     # Regenerate the palette and render all templates to ~/.cache/wallust.
     wallust run "$wall"
-    # Phase 1: build every monitor's composite first (slow, sequential).
+    # Phase 1: build every monitor's composite, all in parallel.
     local name w h names=()
     while read -r name w h; do
         [ -n "$name" ] || continue
-        compose "$wall" "$w" "$h" "$HOME/.cache/wallust/wall-${name}.png"
+        compose "$wall" "$w" "$h" "$HOME/.cache/wallust/wall-${name}.png" &
         names+=("$name")
     done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.width) \(.height)"')
+    wait
     # Phase 2: fire all outputs at once so the transitions stay in sync.
     for name in "${names[@]}"; do
         awww img -o "$name" "$HOME/.cache/wallust/wall-${name}.png" --resize crop \
-            --transition-type fade --transition-duration 1.5 --transition-fps 60 &
+            --transition-type fade --transition-duration 0.8 --transition-fps 60 &
     done
     wait
     echo "$wall" > "$LAST"

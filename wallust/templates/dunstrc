@@ -27,12 +27,12 @@
     horizontal_padding = 14
     text_icon_padding = 10
     frame_width = 1
-    frame_color = "{{color4}}"
+    frame_color = "#F08A3C"
     gap_size = 6
-    separator_color = "{{color4}}"
+    separator_color = "#F08A3C"
     sort = yes
 
-    font = JetBrains Mono 11
+    font = BB Torsos Pro 11
     line_height = 2
     markup = full
     format = "<b>%s</b>\n%b"
@@ -77,7 +77,7 @@
 [urgency_normal]
     background = "{{background}}"
     foreground = "{{foreground}}"
-    frame_color = "{{color4}}"
+    frame_color = "#F08A3C"
     timeout = 7
 
 [urgency_critical]

@@ -28,7 +28,7 @@
     separator_color = "#2a2a3a"
     sort = yes
 
-    font = JetBrains Mono 11
+    font = BB Torsos Pro 11
     line_height = 2
     markup = full
     format = "<b>%s</b>\n%b"

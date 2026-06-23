@@ -4,6 +4,7 @@
 configuration {
     show-icons: true;
     display-drun: "";
+    font: "BB Torsos Pro 12";
 }
 
 window {
@@ -34,12 +35,14 @@ listview {
 element {
     orientation:   vertical;
     border:        0;
-    border-radius: 10px;
-    padding:       6px;
+    border-radius: 8px;
+    padding:       0;
 }
+/* Selected thumbnail gets a clean orange ring, no frame around the rest. */
 element selected {
-    background-color: @selbg;
-    text-color:       @selfg;
+    border:           4px solid;
+    border-color:     @accent;
+    border-radius:    8px;
 }
-element-icon { size: 14em; }
+element-icon { size: 12em; border-radius: 8px; }
 element-text { enabled: false; }
