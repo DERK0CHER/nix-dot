@@ -5,7 +5,8 @@
 
 backend = "fastresize"
 color_space = "lab"
-palette = "softdark16"   # 16-color dark scheme, slightly muted for readability
+palette = "dark16"       # 16-color dark scheme (softdark16 was too low-contrast)
+check_contrast = true    # nudge colors so text stays readable against the background
 
 [templates]
 hypr.template   = 'hyprland.conf'
