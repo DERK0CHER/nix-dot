@@ -1,3 +1,5 @@
+@import url("file:///home/beba/.cache/wallust/wofi.css");
+
 * {
     font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
     font-size: 13px;
@@ -50,7 +52,7 @@ window {
 }
 
 #entry:selected {
-    background: rgba(255, 255, 255, 0.10);
+    background: alpha(@accent, 0.35);
     color: #ffffff;
 }
 

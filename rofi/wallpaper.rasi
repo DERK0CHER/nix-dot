@@ -1,0 +1,51 @@
+/* Minimal grid theme for the wallpaper thumbnail picker. */
+configuration {
+    show-icons: true;
+    display-drun: "";
+}
+
+* {
+    background:     #0a0a0fdd;
+    foreground:     #e0e0f0ff;
+    accent:         #458588ff;
+    border-colour:  #ffffff14;
+}
+
+window {
+    width:            70%;
+    border-radius:    14px;
+    background-color: @background;
+    padding:          18px;
+}
+
+mainbox { children: [ inputbar, listview ]; spacing: 14px; }
+
+inputbar {
+    background-color: #ffffff10;
+    border-radius:    10px;
+    padding:          10px 14px;
+    children:         [ prompt, entry ];
+}
+prompt  { text-color: @accent; margin: 0 8px 0 0; }
+entry   { text-color: @foreground; placeholder: "Search…"; }
+
+listview {
+    columns:    4;
+    lines:      2;
+    spacing:    12px;
+    cycle:      true;
+    scrollbar:  false;
+}
+
+element {
+    orientation:   vertical;
+    border-radius: 10px;
+    padding:       6px;
+}
+element selected {
+    background-color: @accent;
+    border:           2px solid;
+    border-color:     @foreground;
+}
+element-icon { size: 14em; }
+element-text { enabled: false; }

@@ -1,0 +1,21 @@
+# wallust v3 — wallpaper-driven color generation.
+# Templates live in ~/.config/wallust/templates and render to ~/.cache/wallust
+# (untracked), which the live app configs include/import/source by absolute path.
+# That keeps generated color churn out of the git repo.
+
+backend = "fastresize"
+color_space = "lab"
+palette = "softdark16"   # 16-color dark scheme, slightly muted for readability
+
+[templates]
+hypr.template   = 'hyprland.conf'
+hypr.target     = '~/.cache/wallust/hypr-colors.conf'
+
+kitty.template  = 'kitty.conf'
+kitty.target    = '~/.cache/wallust/kitty.conf'
+
+waybar.template = 'waybar.css'
+waybar.target   = '~/.cache/wallust/waybar.css'
+
+wofi.template   = 'wofi.css'
+wofi.target     = '~/.cache/wallust/wofi.css'

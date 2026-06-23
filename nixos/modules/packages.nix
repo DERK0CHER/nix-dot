@@ -56,6 +56,12 @@
     hyprshot
     hyprcursor
     hyprpaper
+    # Wallpaper + colorscheme switching (theming-experiments)
+    swww # runtime wallpaper daemon with transitions
+    wallust # generate color palettes from wallpapers
+    rofi-wayland # thumbnail wallpaper picker
+    jq
+    imagemagick # thumbnail generation
     slurp
     grim
     wl-clipboard
