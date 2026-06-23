@@ -18,16 +18,8 @@ window {
     padding:          18px;
 }
 
-mainbox { children: [ inputbar, listview ]; spacing: 14px; }
-
-inputbar {
-    background-color: #ffffff10;
-    border-radius:    10px;
-    padding:          10px 14px;
-    children:         [ prompt, entry ];
-}
-prompt  { text-color: @accent; margin: 0 8px 0 0; }
-entry   { text-color: @foreground; placeholder: "Search…"; }
+/* No search bar — pure thumbnail grid, navigate with arrows / mouse. */
+mainbox { children: [ listview ]; spacing: 0; }
 
 listview {
     columns:    4;

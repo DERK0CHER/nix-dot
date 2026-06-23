@@ -32,10 +32,14 @@ apply() {
         awww-daemon >/dev/null 2>&1 &
         for _ in $(seq 1 30); do awww query >/dev/null 2>&1 && break; sleep 0.1; done
     fi
-    # Set the wallpaper. Never let a wallpaper hiccup abort the recolor below.
-    awww img "$wall" --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
-    # Regenerate the palette and render all templates to ~/.cache/wallust.
+    # Generate the palette first so we can read the sandy fill color from it.
     wallust run "$wall"
+    local fill; fill="$(tr -d '#[:space:]' < "$HOME/.cache/wallust/fill-color" 2>/dev/null)"
+    [ -n "$fill" ] || fill="000000ff"
+    # Render the image at native size, centered, padded with the sandy fill.
+    # Never let a wallpaper hiccup abort the recolor below.
+    awww img "$wall" --no-resize --fill-color "$fill" \
+        --transition-type fade --transition-duration 1.5 --transition-fps 60 || true
     echo "$wall" > "$LAST"
     # Live-reload everything that reads the generated files.
     pkill -SIGUSR1 kitty 2>/dev/null || true          # kitty re-reads its includes
