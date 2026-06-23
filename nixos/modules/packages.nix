@@ -68,6 +68,7 @@
     imagemagick # thumbnail generation
     hyprcursor # cursor format + hyprcursor-util
     xcur2png # extract Adwaita for per-wallpaper cursor recoloring
+    (papirus-icon-theme.override {color = "orange";}) # orange folder icons (accent)
     slurp
     grim
     wl-clipboard

@@ -79,7 +79,12 @@
         cat ~/.cache/ags/user/generated/terminal/sequences.txt
       end
 
-      set -gx LS_COLORS "di=01;38;2;158;178;119:fi=03;38;2;222;216;192:ln=38;2;198;194;78:or=38;2;164;0;0:mi=38;2;164;0;0:ex=38;2;255;123;123"
+      # ls/grep colors reference kitty's wallust-themed ANSI palette by index
+      # (not fixed RGB), so they track the wallpaper live like the rest of the
+      # terminal. Regular files (fi) use the default foreground, which also
+      # follows the wallpaper. di=green ex=orange-accent ln=cyan or/mi=red.
+      set -gx LS_COLORS "di=01;38;5;2:fi=03:ln=01;38;5;6:or=01;38;5;1:mi=01;38;5;1:ex=01;38;5;8"
+      set -gx GREP_COLORS "mt=01;38;5;8"
 
       function fish_prompt
         # Colors come from wallust (universal vars set by the wallpaper picker);
