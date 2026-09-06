@@ -47,6 +47,9 @@ nobody has to redo it:
 | `C4` | Add the '>' command-palette mode to the launcher | M &middot; 1-3 h |
 | `C5` | Build KeybindEditor.qml with press-a-combo capture | L &middot; a day or more |
 | `C6` | Add the Super+Slash cheat sheet overlay | M &middot; 1-3 h |
+| | **Bluetooth** | |
+| `BT1` | Make the quick-settings toggle handle the rfkill block | S &middot; under 1 h |
+| `BT2` | Decide: finish the in-shell Bluetooth UI, or hand off to blueman | M &middot; 1-3 h |
 | | **Window switching (Alt+Tab)** | |
 | `W1` | Replace cyclenext with a real MRU Alt+Tab switcher overlay | M &middot; 1-3 h |
 | `W2` | Add live window thumbnails to the switcher | M &middot; 1-3 h |
@@ -618,6 +621,90 @@ Build one shared, UI-free model singleton (`Commands.qml` + `commands.json`) and
 - Hyprland's keysym name for '/' under a German keyboard layout (`slash` vs `question` vs requiring Shift in the modmask). Affects the cheat sheet bind only.
 - Whether `hyprctl reload` on this RX 9060 XT is fully safe given AQ_NO_ATOMIC=1 and misc:vrr=0 — reload re-applies env and monitor rules, and the whole rebind flow calls it on every change. Smoke test before shipping.
 - Freedesktop symbolic icon names in the catalogue are guesses per category; `Quickshell.iconPath(name, true)` returning empty for a missing name must be handled (fall back to no icon, not a broken image).
+
+---
+
+## Bluetooth
+
+### Recommended approach
+
+The toggle in Quick Settings does nothing, and the diagnosis is not what it looks like.
+`Services.qml:157` runs `bluetoothctl power on`, but the adapter was **soft-blocked by
+rfkill**, and `bluetoothctl` cannot lift an rfkill block - it fails and the UI flips its
+own state anyway, so the switch looks like it worked. Verified on 2026-09-06: `rfkill list
+bluetooth` reported `Soft blocked: yes`, `bluetoothctl show` said `Powered: no`, and after
+a single `rfkill unblock bluetooth` the same `bluetoothctl power on` succeeded and the
+adapter came up. Any Bluetooth work should start there, not with a new UI.
+
+Then a product decision, `BT2`. The shell's toggle is a power switch and nothing more: no
+device list, no pairing, no connect. Either grow it into a real Bluetooth menu, or accept
+that pairing belongs in a dedicated tool and make the toggle open blueman - which is
+already installed. Given how rarely pairing happens and how much surface a full Bluetooth
+UI carries, handing off is the honest default; keep the in-bar control for power and for
+showing what is connected.
+
+### `BT1` &middot; Make the quick-settings toggle handle the rfkill block
+
+**Effort:** S &middot; under 1 h
+
+**Why.** The switch currently reports success while doing nothing, which is worse than an
+error - the user tries it, sees the pill change, and concludes Bluetooth is broken.
+
+**Files**
+
+- `quickshell/hyprshell/Services.qml`
+- `quickshell/hyprshell/QuickSettings.qml`
+
+**Steps**
+
+1. In `toggleBluetooth`, replace the bare `bluetoothctl power on` with `rfkill unblock bluetooth && bluetoothctl power on`, and on the way down `bluetoothctl power off` (leave rfkill alone - blocking the radio is a stronger statement than powering down, and lockdown mode owns that).
+2. Stop flipping `btPowered` optimistically. Set it from the next poll of `bluetoothctl show`, so the pill reflects the adapter rather than the intent.
+3. Poll `rfkill list bluetooth -o SOFT,HARD -n` alongside the power state. A **hard** block is a physical switch and cannot be cleared in software: show the tile disabled with "blocked in hardware" rather than a toggle that cannot work.
+4. When no adapter exists at all (`bluetoothctl list` empty), hide the tile completely rather than showing a dead switch - the same rule the GPU readout follows.
+5. Check `systemctl is-active bluetooth` once at startup; if the service is down, the tile should say so instead of silently failing.
+
+**Done when**
+
+- [ ] With the adapter soft-blocked, one click powers Bluetooth on and the pill turns accent-coloured only after the adapter actually reports `Powered: yes`.
+- [ ] `rfkill block bluetooth` from a terminal is reflected in the tile within one poll interval.
+- [ ] With `bluetooth.service` stopped, the tile shows the service state and does not pretend to toggle.
+- [ ] On a machine with no Bluetooth adapter the tile is absent.
+
+**Risks**
+
+- `rfkill unblock` may need privileges depending on the seat setup; on this machine it worked as the normal user, but the call must degrade quietly rather than hanging on a polkit prompt - the same mistake game mode made with `scxctl`.
+- Two controllers were visible here (`hci1` blocked while `bluetoothctl list` showed one). Do not assume a single adapter.
+
+### `BT2` &middot; Decide: finish the in-shell Bluetooth UI, or hand off to blueman
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** A power switch with no device list is a dead end the moment you want to connect headphones, which is the only reason most people open Bluetooth at all.
+
+**Files**
+
+- `quickshell/hyprshell/QuickSettings.qml`
+- `quickshell/hyprshell/BluetoothPanel.qml` (only for the build-it option)
+- `arch/packages.txt`
+
+**Steps**
+
+1. Pick one and write the reason down in the file, so this is not re-litigated later.
+2. **Hand-off option (recommended):** clicking the tile's chevron launches `blueman-manager`; the tile keeps power on/off and shows the connected device's name. Blueman is already installed here; add it to `arch/packages.txt` so a fresh install has it.
+3. **Build-it option:** a `BluetoothPanel` using `Quickshell.Bluetooth` (the module exists in the installed 0.3.1 - `/usr/lib/qt6/qml/Quickshell/Bluetooth` - so verify its API before assuming a shape) listing paired and nearby devices, with connect, disconnect and forget. Pairing with a PIN is the part that carries real complexity; if you skip it, say so and keep blueman reachable for that case.
+4. Either way, show the connected device in the bar's status pill as a small glyph, invisible when nothing is connected - the same minimalism rule the rest of the bar follows.
+5. GNOME Settings' Bluetooth panel is a third option and needs nothing built, but it is a heavier dependency for one panel and does not integrate with the bar. Note the decision either way.
+
+**Done when**
+
+- [ ] Headphones can be paired and connected without opening a terminal.
+- [ ] The bar shows a connected device and shows nothing when there is none.
+- [ ] The chosen path is documented in the file with its reason.
+
+**Risks**
+
+- `Quickshell.Bluetooth`'s API in 0.3.1 is unverified; check it before designing against it.
+- Blueman brings a GTK tray applet that may want to autostart; if it is launched on demand only, make sure it does not add itself to autostart behind your back.
 
 ---
 

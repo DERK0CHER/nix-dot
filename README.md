@@ -200,7 +200,7 @@ sched_ext scheduler is loaded by default.
 
 ## Planned work
 
-[TODO.md](TODO.md) holds the backlog: 44 specified tasks across the launcher, an Alt+Tab switcher, a command
+[TODO.md](TODO.md) holds the backlog: 46 specified tasks across the launcher, an Alt+Tab switcher, a command
 palette with an in-place keybind editor, a Claude usage widget, Proton mail/calendar/VPN,
 a lockdown mode, and the Neovim config plus its tutorial. Each task names the files to
 touch, the steps, and the acceptance checks. Task IDs are stable, so commits can reference
