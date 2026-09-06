@@ -22,36 +22,36 @@ ShellRoot {
         target: "shell"
 
         function toggleQuickSettings(): void {
-            const next = !State.quickSettingsOpen;
-            State.closePanels();
-            State.quickSettingsOpen = next;
+            const next = !ShellState.quickSettingsOpen;
+            ShellState.closePanels();
+            ShellState.quickSettingsOpen = next;
         }
 
         function toggleNotifications(): void {
-            const next = !State.notificationsOpen;
-            State.closePanels();
-            State.notificationsOpen = next;
+            const next = !ShellState.notificationsOpen;
+            ShellState.closePanels();
+            ShellState.notificationsOpen = next;
         }
 
         function toggleAppMenu(): void {
-            const next = !State.appMenuOpen;
-            State.closePanels();
-            State.appMenuOpen = next;
+            const next = !ShellState.appMenuOpen;
+            ShellState.closePanels();
+            ShellState.appMenuOpen = next;
         }
 
         function toggleBar(): void {
-            State.barVisible = !State.barVisible;
+            ShellState.barVisible = !ShellState.barVisible;
         }
 
         function setGameMode(on: bool): void {
-            State.gameMode = on;
-            State.barVisible = !on;
-            State.doNotDisturb = on;
-            State.closePanels();
+            ShellState.gameMode = on;
+            ShellState.barVisible = !on;
+            ShellState.doNotDisturb = on;
+            ShellState.closePanels();
         }
 
         function toggleLauncher(): void {
-            State.closePanels();
+            ShellState.closePanels();
             Quickshell.execDetached(["sh", "-c", "pkill -x wofi || wofi --show drun"]);
         }
     }

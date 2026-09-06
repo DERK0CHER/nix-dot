@@ -37,7 +37,7 @@ Singleton {
     readonly property bool gpuGaveUp: gpuFailures >= 3
 
     // 5 s while a panel is open, 30 s otherwise.
-    readonly property bool pollFast: State.quickSettingsOpen || State.notificationsOpen || State.appMenuOpen
+    readonly property bool pollFast: ShellState.quickSettingsOpen || ShellState.notificationsOpen || ShellState.appMenuOpen
 
     // ---- shared network state (used by StatusPill on every monitor) -------
     property string netKind: ""     // "ethernet" | "wifi" | "none" | "" (unknown)

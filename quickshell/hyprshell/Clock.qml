@@ -10,7 +10,7 @@ Item {
         precision: SystemClock.Minutes
     }
 
-    readonly property bool hasUnread: State.unreadCount > 0 && !State.doNotDisturb
+    readonly property bool hasUnread: ShellState.unreadCount > 0 && !ShellState.doNotDisturb
 
     implicitWidth: pill.implicitWidth
     implicitHeight: Theme.barHeight
@@ -21,7 +21,7 @@ Item {
         height: 24
         radius: 12
         implicitWidth: label.implicitWidth + Theme.pad * 2 + (dot.visible ? 10 : 0)
-        color: mouse.containsMouse || State.notificationsOpen ? Theme.card : "transparent"
+        color: mouse.containsMouse || ShellState.notificationsOpen ? Theme.card : "transparent"
         Behavior on color { ColorAnimation { duration: Theme.animMs } }
 
         Row {
@@ -55,9 +55,9 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         onClicked: {
-            const next = !State.notificationsOpen;
-            State.closePanels();
-            State.notificationsOpen = next;
+            const next = !ShellState.notificationsOpen;
+            ShellState.closePanels();
+            ShellState.notificationsOpen = next;
         }
     }
 }

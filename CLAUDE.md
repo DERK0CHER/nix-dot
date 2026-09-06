@@ -96,7 +96,7 @@ Branch `cachyos-nvidia-intel` targets the **cachy** machine. `nixos/` and
 | `hypr/hyprland/gaming.conf` | Game-related rules / options |
 | `hypr/custom/` | Local overrides sourced after base |
 | `hypr/scripts/game-mode` | Game mode script: `on | off | toggle | status | run [--exclusive] -- <cmd>`; probes GPU/CPU vendor at runtime so one file serves both hosts |
-| `quickshell/hyprshell/` | The desktop shell (Quickshell 0.3.x): bar, app menu, quick settings, notifications, OSD. `shell.qml` entry; singletons `Theme.qml`, `State.qml`, `Notifs.qml` (listed in `qmldir` — plain components are not). GPU stats are vendor-aware (`nvidia-smi` / amdgpu sysfs) |
+| `quickshell/hyprshell/` | The desktop shell (Quickshell 0.3.x): bar, app menu, quick settings, notifications, OSD. `shell.qml` entry; singletons `Theme.qml`, `ShellState.qml`, `Notifs.qml`, `Host.qml`; **every** component must be listed in `qmldir`, singleton or not, and must not shadow a QtQuick type name. GPU stats are vendor-aware (`nvidia-smi` / amdgpu sysfs) |
 | `arch/` | CachyOS/Arch install path: `packages.txt` (pacman), `packages-aur.txt` (yay), `install.sh`, `README.md` |
 | `nixos/modules/desktop.nix` | Shell packages, Adwaita theming, portals, fonts, Qt platform theme |
 | `nixos/modules/gaming.nix` | gamemode, scx, steam, kernel/sysctl tuning |

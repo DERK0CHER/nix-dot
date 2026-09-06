@@ -9,7 +9,7 @@ import Quickshell.Services.Notifications
 PanelWindow {
     id: win
 
-    visible: State.notificationsOpen
+    visible: ShellState.notificationsOpen
     anchors { top: true }
     margins { top: 6 }
     implicitWidth: 380
@@ -24,8 +24,8 @@ PanelWindow {
 
     HyprlandFocusGrab {
         windows: [win]
-        active: State.notificationsOpen
-        onCleared: State.notificationsOpen = false
+        active: ShellState.notificationsOpen
+        onCleared: ShellState.notificationsOpen = false
     }
 
     Rectangle {
@@ -35,7 +35,7 @@ PanelWindow {
         border.width: 1
         border.color: Theme.border
         focus: true
-        Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { State.notificationsOpen = false; e.accepted = true } }
+        Keys.onPressed: e => { if (e.key === Qt.Key_Escape) { ShellState.notificationsOpen = false; e.accepted = true } }
 
         ColumnLayout {
             id: col
@@ -58,7 +58,7 @@ PanelWindow {
                     implicitWidth: dndText.implicitWidth + 20
                     implicitHeight: 26
                     radius: 13
-                    color: State.doNotDisturb ? Theme.accent : (dndMouse.containsMouse ? Qt.rgba(1,1,1,0.12) : Theme.card)
+                    color: ShellState.doNotDisturb ? Theme.accent : (dndMouse.containsMouse ? Qt.rgba(1,1,1,0.12) : Theme.card)
                     Text {
                         id: dndText
                         anchors.centerIn: parent
@@ -72,7 +72,7 @@ PanelWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: State.doNotDisturb = !State.doNotDisturb
+                        onClicked: ShellState.doNotDisturb = !ShellState.doNotDisturb
                     }
                 }
                 Rectangle {

@@ -13,7 +13,7 @@ Item {
     id: root
 
     readonly property bool hovered: mouse.containsMouse
-    readonly property bool active: hovered || State.quickSettingsOpen
+    readonly property bool active: hovered || ShellState.quickSettingsOpen
 
     // ---- network ----
     // Polled once per shell in Host.qml, not once per screen: this component is
@@ -208,9 +208,9 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         onClicked: {
-            const next = !State.quickSettingsOpen;
-            State.closePanels();
-            State.quickSettingsOpen = next;
+            const next = !ShellState.quickSettingsOpen;
+            ShellState.closePanels();
+            ShellState.quickSettingsOpen = next;
         }
         onWheel: wheel => {
             if (!root.sink || !root.sink.audio)

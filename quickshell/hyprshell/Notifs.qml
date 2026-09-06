@@ -29,7 +29,7 @@ Singleton {
             n.tracked = true
             root.times[n.id] = Date.now()
             const critical = n.urgency === NotificationUrgency.Critical
-            if (critical || (!State.doNotDisturb && !State.gameMode))
+            if (critical || (!ShellState.doNotDisturb && !ShellState.gameMode))
                 root.popup(n)
         }
     }

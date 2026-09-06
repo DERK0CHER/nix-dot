@@ -20,9 +20,9 @@ nobody has to redo it:
 - `hyprctl binds -j` returns one object per bind with `modmask`, `key`, `dispatcher`, `arg`,
   plus `locked` / `mouse` / `repeat` / `release` / `submap` / `description`. The modmask
   arithmetic holds: shift 1, ctrl 4, alt 8, super 64, so 65 is super+shift and 72 is super+alt.
-- `qmldir` only needs entries for singletons. Plain components in the same directory resolve
-  automatically, which is how `Bar.qml` and `Clock.qml` already work, so new panels and widgets
-  need no registration.
+- `qmldir` must list EVERY component, not only singletons - verified by running the shell on
+  2026-09-06. An earlier note here claimed the opposite; that was wrong and cost a startup
+  failure. Avoid names that shadow QtQuick built-ins (`State` did, and broke every binding).
 - The Claude CLI has both `--print` and `--output-format`.
 - Transcript rows carry `timestamp`, `message.model` and `message.usage` with `input_tokens`,
   `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` and an `iterations`
@@ -468,7 +468,7 @@ Build one shared, UI-free model singleton (`Commands.qml` + `commands.json`) and
 
 **Steps**
 
-1. Create quickshell/hyprshell/Commands.qml as `pragma Singleton` + `Singleton {}` (matching Theme.qml/State.qml style) and register it in qmldir: `singleton Commands 1.0 Commands.qml`.
+1. Create quickshell/hyprshell/Commands.qml as `pragma Singleton` + `Singleton {}` (matching Theme.qml/ShellState.qml style) and register it in qmldir: `singleton Commands 1.0 Commands.qml`.
 2. Load the catalogue with `Quickshell.Io.FileView { path: Qt.resolvedUrl("commands.json"); watchChanges: true; onFileChanged: reload(); onLoaded: root.parse(text()) }` — same pattern AppMenu.qml already uses for recently-used.xbel.
 3. Load live state with `Process { command: ["hyprctl","binds","-j"]; stdout: StdioCollector { onStreamFinished: root.parseBinds(text) } }`, exactly the Process/StdioCollector idiom in Services.qml. Re-run it on startup and whenever Hyprland emits `configreloaded` (subscribe via Quickshell.Hyprland `Hyprland.rawEvent`).
 4. Implement modmask <-> mods with this table, which I verified empirically against this repo's own binds on the running compositor: 1=SHIFT, 2=CAPS, 4=CTRL, 8=ALT, 16=MOD2, 32=MOD3, 64=SUPER, 128=MOD5. Checks that passed: modmask 5 == Ctrl+Shift (the Ctrl+Shift,Escape gnome-system-monitor bind), 8 == Alt (Alt,Tab), 65 == Super+Shift, 68 == Ctrl+Super, 72 == Super+Alt.
@@ -664,7 +664,7 @@ is for: flipping back and forth between the last two windows.
 
 **Steps**
 
-1. Add `property bool switcherOpen: false` and `property int switcherIndex: 0` to `State.qml`, and reset both in whatever `closePanels()` helper the other panels use.
+1. Add `property bool switcherOpen: false` and `property int switcherIndex: 0` to `ShellState.qml`, and reset both in whatever `closePanels()` helper the other panels use.
 2. Create `Switcher.qml` as a centred `PanelWindow` with `WlrLayershell.namespace: "hyprshell-panel"`, `WlrLayershell.layer: WlrLayer.Overlay`, `exclusiveZone: 0`, `color: "transparent"`, `visible: State.switcherOpen`. Leave `anchors` unset so it centres. Keyboard focus stays `None`: the submap owns the keys.
 3. Build the model on open: run `Process` with `["hyprctl","clients","-j"]`, parse in `StdioCollector.onStreamFinished`, drop entries where `mapped` is false or `hidden` is true, filter to the focused monitor, then `sort((a,b) => a.focusHistoryID - b.focusHistoryID)`. Refresh only on open, never while the overlay is up, so the order cannot shift under the user's fingers.
 4. Render a horizontal `Row` of tiles in a `Rectangle` styled like the other panels (`Theme.bg`, `Theme.radius`, 1px `Theme.border`, `Theme.pad`). Each tile is 96x96: the app icon at 48px via `DesktopEntries.heuristicLookup(client.class)` (the same lookup `Bar.qml:24` already uses, falling back to `initialClass` then a generic icon), and the window title elided under it in `Theme.fgDim`. The selected tile gets a `Theme.card` background at `Theme.radiusSmall` plus a 2px `Theme.accent` border. Show the full title of the selected window in one line below the row so long titles stay readable.
@@ -965,7 +965,7 @@ Build this as three separable layers so each one degrades to nothing on its own:
 - Verified `claude --help` lists `-p/--print`, `--output-format`, `--input-format`. I did NOT run `claude -p` to confirm the `--output-format json` envelope shape.
 - Quickshell APIs used are all already in this repo: `Process` + `StdioCollector.onStreamFinished`, `Timer`, `PanelWindow`, `WlrLayershell.namespace/layer/keyboardFocus`, `HyprlandFocusGrab`, `Quickshell.execDetached`, `IpcHandler`. NOT used anywhere here and therefore unverified: `Quickshell.Io.FileView` (for watching the live transcript instead of polling) and `Quickshell.clipboardText`.
 - QtQuick.Shapes / `PathPolyline` for the sparkline is standard Qt 6 but is imported nowhere in this repo today, so its presence in the installed Quickshell Qt runtime is unverified. Canvas is the fallback.
-- RESOLVED 2026-09-06: qmldir lists only singletons (Notifs, Theme, State). Plain components resolve automatically from the same directory, so ClaudeWidget/ClaudePanel/ClaudeAsk need no qmldir entry.
+- CORRECTED 2026-09-06, after actually running the shell: the earlier note here was wrong. Once a qmldir exists it defines the module exhaustively, so EVERY component needs an entry, not just singletons - without one the shell dies with "Bar is not a type". New components must be added to quickshell/hyprshell/qmldir. Also avoid names that collide with QtQuick built-ins: the singleton was called State, which resolved to QtQuick's State element and silently made every binding undefined; it is now ShellState.
 
 ---
 
@@ -1109,7 +1109,7 @@ Recommended path: **protonmail-bridge (headless, systemd user service) + Evoluti
 4. Write the JSON atomically to `$XDG_RUNTIME_DIR/hyprshell/mail.json` (`open(tmp,'w')` then `os.replace`) so the shell never reads a half-written file.
 5. Add a systemd user service+timer in home-manager/home.nix: `systemd.user.services.hyprshell-mail = { Service = { Type = "oneshot"; ExecStart = "%h/.config/hypr/scripts/mail-status"; }; };` and `systemd.user.timers.hyprshell-mail = { Timer = { OnBootSec = "1m"; OnUnitActiveSec = "60s"; }; Install.WantedBy = ["timers.target"]; };`.
 6. Create quickshell/hyprshell/Mail.qml as `pragma Singleton` + `Singleton { ... }` holding `property bool ok`, `property int unread`, `property string latestFrom`, `property string latestSubject`; back it with `FileView { path: Quickshell.env("XDG_RUNTIME_DIR") + "/hyprshell/mail.json"; watchChanges: true; onFileChanged: reload() }` and parse `JSON.parse(text())` in a try/catch. Add a 90 s Timer that flips `ok=false` if the file's data stops updating.
-7. Register it in quickshell/hyprshell/qmldir: `singleton Mail 1.0 Mail.qml` (alongside the existing Notifs/Theme/State lines).
+7. Register it in quickshell/hyprshell/qmldir: `singleton Mail 1.0 Mail.qml` (alongside the existing Notifs/Theme/ShellState lines).
 8. Add a `function openMail()` to Services.qml: `Quickshell.execDetached(["gtk-launch", "org.gnome.Evolution"])`.
 
 **Done when**

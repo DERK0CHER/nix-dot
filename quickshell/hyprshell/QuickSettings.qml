@@ -9,7 +9,10 @@ import Quickshell.Services.Mpris
 PanelWindow {
     id: win
 
-    visible: State.quickSettingsOpen
+    // Read the real user instead of hardcoding one: this repo serves two machines.
+    readonly property string userName: (Quickshell.env("USER") || Quickshell.env("LOGNAME") || "user")
+
+    visible: ShellState.quickSettingsOpen
     anchors { top: true; right: true }
     margins { top: 6; right: 6 }
     implicitWidth: 360
@@ -26,13 +29,13 @@ PanelWindow {
 
     Services {
         id: svc
-        pollFast: State.quickSettingsOpen
+        pollFast: ShellState.quickSettingsOpen
     }
 
     HyprlandFocusGrab {
         windows: [win]
-        active: State.quickSettingsOpen
-        onCleared: State.quickSettingsOpen = false
+        active: ShellState.quickSettingsOpen
+        onCleared: ShellState.quickSettingsOpen = false
     }
 
     onVisibleChanged: {
@@ -44,7 +47,7 @@ PanelWindow {
     function powerAction(name) {
         if (powerConfirm === name) {
             powerConfirm = ""
-            State.quickSettingsOpen = false
+            ShellState.quickSettingsOpen = false
             if (name === "suspend") svc.suspend()
             else if (name === "reboot") svc.reboot()
             else if (name === "poweroff") svc.poweroff()
@@ -114,7 +117,7 @@ PanelWindow {
         border.color: Theme.border
         focus: true
         Keys.onPressed: e => {
-            if (e.key === Qt.Key_Escape) { State.quickSettingsOpen = false; e.accepted = true }
+            if (e.key === Qt.Key_Escape) { ShellState.quickSettingsOpen = false; e.accepted = true }
         }
 
         ColumnLayout {
@@ -134,7 +137,7 @@ PanelWindow {
                     color: Theme.accent
                     Text {
                         anchors.centerIn: parent
-                        text: "B"
+                        text: win.userName.charAt(0).toUpperCase()
                         color: "white"
                         font.family: Theme.font
                         font.pixelSize: 16
@@ -142,7 +145,7 @@ PanelWindow {
                     }
                 }
                 Text {
-                    text: "beba"
+                    text: win.userName
                     color: Theme.fg
                     font.family: Theme.font
                     font.pixelSize: Theme.fontSize + 1
@@ -150,8 +153,8 @@ PanelWindow {
                 }
                 Item { Layout.fillWidth: true }
 
-                IconButton { icon: "⚿"; onClicked: { State.quickSettingsOpen = false; svc.lock() } }
-                IconButton { icon: "⚙"; onClicked: { State.quickSettingsOpen = false; svc.openSettings() } }
+                IconButton { icon: "⚿"; onClicked: { ShellState.quickSettingsOpen = false; svc.lock() } }
+                IconButton { icon: "⚙"; onClicked: { ShellState.quickSettingsOpen = false; svc.openSettings() } }
                 IconButton {
                     icon: "⏻"
                     active: win.powerOpen
@@ -220,14 +223,14 @@ PanelWindow {
                 QsToggle {
                     icon: "⊘"
                     label: "Do Not Disturb"
-                    active: State.doNotDisturb
-                    onClicked: State.doNotDisturb = !State.doNotDisturb
+                    active: ShellState.doNotDisturb
+                    onClicked: ShellState.doNotDisturb = !ShellState.doNotDisturb
                 }
                 QsToggle {
                     icon: "⚡"
                     label: "Game Mode"
-                    sublabel: State.gameMode ? "On" : "Off"
-                    active: State.gameMode
+                    sublabel: ShellState.gameMode ? "On" : "Off"
+                    active: ShellState.gameMode
                     onClicked: svc.toggleGameMode()
                 }
                 QsToggle {

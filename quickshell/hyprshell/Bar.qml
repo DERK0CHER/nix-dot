@@ -38,8 +38,8 @@ PanelWindow {
         right: true
     }
     implicitHeight: Theme.barHeight
-    exclusiveZone: State.barVisible ? Theme.barHeight : 0
-    visible: State.barVisible
+    exclusiveZone: ShellState.barVisible ? Theme.barHeight : 0
+    visible: ShellState.barVisible
     color: "transparent"
 
     WlrLayershell.namespace: "hyprshell-bar"
@@ -83,7 +83,7 @@ PanelWindow {
                 height: 24
                 radius: 12
                 implicitWidth: appRow.implicitWidth + Theme.pad * 2
-                color: appMouse.containsMouse || State.appMenuOpen ? Theme.card : "transparent"
+                color: appMouse.containsMouse || ShellState.appMenuOpen ? Theme.card : "transparent"
                 Behavior on color { ColorAnimation { duration: Theme.animMs } }
 
                 Row {
@@ -114,9 +114,9 @@ PanelWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: {
-                        const next = !State.appMenuOpen;
-                        State.closePanels();
-                        State.appMenuOpen = next;
+                        const next = !ShellState.appMenuOpen;
+                        ShellState.closePanels();
+                        ShellState.appMenuOpen = next;
                     }
                 }
             }
@@ -137,7 +137,7 @@ PanelWindow {
     // App menu popup (only on the focused monitor).
     AppMenu {
         screen: root.screen
-        open: State.appMenuOpen && root.focusedHere && State.barVisible
+        open: ShellState.appMenuOpen && root.focusedHere && ShellState.barVisible
         entry: root.activeEntry
         toplevel: root.activeToplevel
         appName: root.appName

@@ -27,7 +27,7 @@ PanelWindow {
         target: Notifs
         function onPopup(n) {
             const critical = n.urgency === NotificationUrgency.Critical
-            if (!critical && (State.doNotDisturb || State.gameMode)) return
+            if (!critical && (ShellState.doNotDisturb || ShellState.gameMode)) return
             win.add(n)
         }
     }
