@@ -13,6 +13,7 @@ ShellRoot {
 
     // Written by the panels agent (same directory).
     QuickSettings {}
+    CommandPalette {}
     NotificationCenter {}
     NotificationPopups {}
     Osd {}
@@ -25,6 +26,12 @@ ShellRoot {
             const next = !ShellState.quickSettingsOpen;
             ShellState.closePanels();
             ShellState.quickSettingsOpen = next;
+        }
+
+        function togglePalette(): void {
+            const next = !ShellState.paletteOpen;
+            ShellState.closePanels();
+            ShellState.paletteOpen = next;
         }
 
         function toggleNotifications(): void {

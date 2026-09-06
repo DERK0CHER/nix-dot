@@ -18,3 +18,4 @@ QuickSettings 1.0 QuickSettings.qml
 Services 1.0 Services.qml
 StatusPill 1.0 StatusPill.qml
 Workspaces 1.0 Workspaces.qml
+CommandPalette 1.0 CommandPalette.qml

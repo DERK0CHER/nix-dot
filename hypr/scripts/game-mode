@@ -303,6 +303,11 @@ gpu_status_line() {
 }
 
 # ------------------------------------------------------------- sched_ext ---
+# OFF BY DEFAULT. scx_loader's dbus methods are polkit-protected, so starting or
+# stopping a scheduler pops a password dialog and game-mode then BLOCKS on it -
+# which is the opposite of what a "make the game fast now" toggle should do.
+# Enable deliberately with GAME_MODE_SCX=1 after installing a polkit rule that
+# lets your user manage sched-ext without a prompt.
 # Entirely optional. scxctl is a dbus client for scx_loader; if the service is
 # not running, or scx-scheds is not installed, every call here is a quiet no-op.
 # Verified against scxctl 1.0 on this host:
@@ -310,6 +315,7 @@ gpu_status_line() {
 #   scxctl stop
 #   scxctl get      -> "no scx scheduler running" when idle
 scx_current() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_current" == scx_current ]] && echo none; return 0; }
   have scxctl || return 0
   local out
   out="$(timeout 3 scxctl get 2>/dev/null || true)"
@@ -318,6 +324,7 @@ scx_current() {
 }
 
 scx_start() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_start" == scx_current ]] && echo none; return 0; }
   have scxctl || return 0
   [[ -n "$SCX_SCHED" ]] || return 0
   [[ -d /sys/kernel/sched_ext ]] || return 0
@@ -330,6 +337,7 @@ scx_start() {
 }
 
 scx_stop() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_stop" == scx_current ]] && echo none; return 0; }
   have scxctl || return 0
   # Only stop it if we were the ones who started it.
   [[ "$(state_get scx 2>/dev/null || echo none)" == "none" ]] || return 0
@@ -514,8 +522,37 @@ cmd_status() {
   return 1
 }
 
+# Leaving needs a deliberate second press. Dropping out of game mode mid-match
+# because Super+G was brushed is worse than the extra keystroke; a password
+# prompt would be worse still, so this is a plain confirm with a short window.
+GAME_MODE_CONFIRM_SECONDS="${GAME_MODE_CONFIRM_SECONDS:-5}"
+_confirm_file="${XDG_RUNTIME_DIR:-/tmp}/hypr-game-mode.leaving"
+
 cmd_toggle() {
-  if is_on; then cmd_off; else cmd_on "$@"; fi
+  if ! is_on; then
+    rm -f -- "$_confirm_file" 2>/dev/null || true
+    cmd_on "$@"
+    return
+  fi
+
+  local now stamp
+  now="$(date +%s)"
+  stamp="$(cat -- "$_confirm_file" 2>/dev/null || echo 0)"
+  [[ "$stamp" =~ ^[0-9]+$ ]] || stamp=0
+
+  if (( now - stamp <= GAME_MODE_CONFIRM_SECONDS )); then
+    rm -f -- "$_confirm_file" 2>/dev/null || true
+    cmd_off
+    return
+  fi
+
+  echo "$now" > "$_confirm_file"
+  if have notify-send; then
+    notify-send -a game-mode -u critical -t $(( GAME_MODE_CONFIRM_SECONDS * 1000 )) \
+      "Still in game mode" \
+      "Press Super+G again within ${GAME_MODE_CONFIRM_SECONDS}s to leave."
+  fi
+  echo "confirm-required"
 }
 
 # Return the address of a window whose pid is $1 or a descendant of $1.

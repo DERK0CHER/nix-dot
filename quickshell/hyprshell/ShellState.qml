@@ -11,6 +11,7 @@ Singleton {
     property bool appMenuOpen: false
     property bool gameMode: false
     property bool doNotDisturb: false
+    property bool paletteOpen: false
 
     // Optional extras (other components may set these).
     property int unreadCount: 0
@@ -19,5 +20,6 @@ Singleton {
         quickSettingsOpen = false;
         notificationsOpen = false;
         appMenuOpen = false;
+        paletteOpen = false;
     }
 }

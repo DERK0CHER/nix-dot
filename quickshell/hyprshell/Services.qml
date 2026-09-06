@@ -180,8 +180,18 @@ Scope {
     function toggleGameMode() {
         Quickshell.execDetached(["sh", "-c", "\"$HOME/.config/hypr/scripts/game-mode\" toggle"])
     }
+    // Try the settings apps in order of how well they match the shell's look, and
+    // say so instead of doing nothing when none of them is installed - a dead
+    // button that fails silently is worse than an error.
     function openSettings() {
-        Quickshell.execDetached(["sh", "-c", "XDG_CURRENT_DESKTOP=gnome gnome-control-center >/dev/null 2>&1 &"])
+        Quickshell.execDetached(["sh", "-c",
+            "for c in gnome-control-center systemsettings xfce4-settings-manager; do " +
+            "  if command -v \"$c\" >/dev/null 2>&1; then " +
+            "    XDG_CURRENT_DESKTOP=gnome \"$c\" >/dev/null 2>&1 & exit 0; " +
+            "  fi; " +
+            "done; " +
+            "notify-send -a hyprshell 'No settings app installed' " +
+            "'Install gnome-control-center to use this button.'"])
     }
     function lock()     { Quickshell.execDetached(["loginctl", "lock-session"]) }
     function suspend()  { Quickshell.execDetached(["systemctl", "suspend"]) }

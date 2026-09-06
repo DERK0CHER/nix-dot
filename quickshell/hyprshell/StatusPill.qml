@@ -86,7 +86,10 @@ Item {
         implicitWidth: iconRow.implicitWidth + Theme.pad * 2
         color: root.active ? Theme.card : "transparent"
         Behavior on color { ColorAnimation { duration: Theme.animMs } }
-        Behavior on implicitWidth { NumberAnimation { duration: Theme.animMs; easing.type: Easing.OutCubic } }
+        // No Behavior here on purpose. The pill's width is bound to iconRow, whose
+        // trayArea is already animated; animating it a second time (with different
+        // easing) made the pill's left edge lag the tray reveal, so every icon to the
+        // right of the tray visibly drifted and settled. One animation, in one place.
 
         Row {
             id: iconRow
@@ -102,7 +105,7 @@ Item {
                 visible: SystemTray.items.values.length > 0
                 implicitHeight: 16
                 implicitWidth: root.hovered ? trayRow.implicitWidth : dotsText.implicitWidth
-                Behavior on implicitWidth { NumberAnimation { duration: Theme.animMs } }
+                Behavior on implicitWidth { NumberAnimation { duration: Theme.animMs; easing.type: Easing.OutCubic } }
 
                 Text {
                     id: dotsText
