@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 
-// Searchable list of every key binding Hyprland currently has.
-// The source of truth is `hyprctl binds -j`, read fresh on every open, so this
-// can never drift out of sync with the config the way a hand-written list would.
+// Searchable list of every command the shell knows about.
+// The model lives in the Commands singleton, which merges the live
+// `hyprctl binds -j` output with the user's own ~/.config/hyprshell/commands.json,
+// so this file only draws and never persists anything itself.
 PanelWindow {
     id: win
 
@@ -44,119 +44,44 @@ PanelWindow {
         onCleared: ShellState.paletteOpen = false
     }
 
-    property var allBinds: []
-    property var labels: ({})          // "modmask|key" -> human name
     property string mode: "search"     // search | rename | capture
     property string capturePreview: ""
-
-    readonly property string labelPath: (Quickshell.env("HOME") || "") + "/.local/state/hyprshell/bind-labels.json"
-    readonly property string overridePath: (Quickshell.env("HOME") || "") + "/.config/hypr/custom/keybinds.conf"
-
-    function bindKey(b) { return b.modmask + "|" + (b.key || ("code:" + b.keycode)); }
-    function labelFor(b) { return labels[bindKey(b)] || ""; }
-
-    Process {
-        id: loadLabels
-        command: ["sh", "-c", "cat \"$HOME/.local/state/hyprshell/bind-labels.json\" 2>/dev/null || echo '{}'"]
-        stdout: StdioCollector {
-            onStreamFinished: { try { win.labels = JSON.parse(text) || ({}) } catch (e) { win.labels = ({}) } }
-        }
-    }
-
-    Process { id: saveLabels }
-    function persistLabels() {
-        const json = JSON.stringify(labels);
-        saveLabels.command = ["sh", "-c",
-            "mkdir -p \"$HOME/.local/state/hyprshell\" && cat > \"$HOME/.local/state/hyprshell/bind-labels.json\" <<'HYPRSHELL_EOF'\n" +
-            json + "\nHYPRSHELL_EOF"];
-        saveLabels.running = true;
-    }
-
-    Process { id: saveBind }
-    // Rebinds go into hypr/custom/keybinds.conf, which hyprland.conf sources last,
-    // inside a marked block so anything hand-written in that file survives.
-    function persistRebind(b, mods, key) {
-        const oldCombo = modsToText(b.modmask).join("+") + ", " + (b.key || "");
-        const newCombo = mods.join("+") + ", " + key;
-        const arg = (b.arg || "").trim();
-        const line = "bind = " + newCombo + ", " + b.dispatcher + (arg ? ", " + arg : "");
-        const unbind = "unbind = " + oldCombo;
-        saveBind.command = ["sh", "-c",
-            'f="$HOME/.config/hypr/custom/keybinds.conf"; mkdir -p "$(dirname "$f")"; touch "$f"; ' +
-            'grep -q "BEGIN hyprshell rebinds" "$f" || printf "\n# BEGIN hyprshell rebinds - generated, edit above this line\n# END hyprshell rebinds\n" >> "$f"; ' +
-            "awk -v u=\"" + unbind + "\" -v l=\"" + line + "\" '" +
-            '/# END hyprshell rebinds/ { print u; print l } { print }' +
-            "' \"$f\" > \"$f.tmp\" && mv \"$f.tmp\" \"$f\" && hyprctl reload >/dev/null 2>&1 && " +
-            "notify-send -a hyprshell 'Shortcut changed' \"" + newCombo.replace(/"/g, "") + "\""];
-        saveBind.running = true;
-    }
     property string query: ""
     property int sel: 0
 
-    // modmask is a bitfield; these four are the ones this config uses.
-    function modsToText(m) {
-        const parts = [];
-        if (m & 64) parts.push("Super");
-        if (m & 4)  parts.push("Ctrl");
-        if (m & 8)  parts.push("Alt");
-        if (m & 1)  parts.push("Shift");
-        return parts;
-    }
+    // "Super+Shift+P" in the store, "Super + Shift + P" on screen.
+    function shortcutLabel(c) { return Commands.shortcutText(c.shortcut); }
 
-    function bindLabel(b) {
-        const key = (b.key && b.key !== "") ? b.key : (b.keycode ? "code:" + b.keycode : "?");
-        return modsToText(b.modmask).concat([key]).join(" + ");
-    }
-
-    // "exec, foo --bar" reads better than "exec foo --bar" in a list of actions.
-    function actionLabel(b) {
-        const d = b.dispatcher || "";
-        const a = (b.arg || "").trim();
-        return a === "" ? d : d + "  " + a;
-    }
-
-    readonly property var filtered: {
-        const q = query.trim().toLowerCase();
-        const out = [];
-        for (let i = 0; i < allBinds.length; i++) {
-            const b = allBinds[i];
-            if (q === "") { out.push(b); continue; }
-            const hay = (bindLabel(b) + " " + actionLabel(b) + " " + labelFor(b) + " " + (b.description || "")).toLowerCase();
-            // every whitespace-separated term must match somewhere
-            const terms = q.split(/\s+/);
-            let ok = true;
-            for (let t = 0; t < terms.length; t++) if (hay.indexOf(terms[t]) === -1) { ok = false; break; }
-            if (ok) out.push(b);
-        }
-        return out;
-    }
+    readonly property var filtered: Commands.search(query)
 
     onFilteredChanged: sel = 0
-
-    Process {
-        id: loadBinds
-        command: ["hyprctl", "binds", "-j"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const raw = JSON.parse(text);
-                    // Submap binds would run in a mode the user is not in; hide them.
-                    win.allBinds = raw.filter(b => !b.submap || b.submap === "");
-                } catch (e) {
-                    win.allBinds = [];
-                }
-            }
-        }
-    }
 
     onVisibleChanged: {
         if (visible) {
             query = ""; sel = 0; mode = "search"; capturePreview = "";
-            loadBinds.running = true;
-            loadLabels.running = true;
+            Commands.refresh();
             input.forceActiveFocus();
+        } else {
+            // Never leave the session in the capture submap.
+            captureGrab(false);
         }
     }
+
+    // Hyprland consumes its own keybinds before the focused surface sees them, so
+    // an exclusive grab is not enough to record Super+G as a shortcut - game mode
+    // would fire instead. Switching into a submap with nothing bound but Escape
+    // lets every combination fall through to this window.
+    //
+    // Leaving the submap must be belt and braces: a stuck submap means a session
+    // with no keybindings at all. It is reset when capture ends, when the mode
+    // changes, when the palette closes, and Escape is bound inside the submap
+    // itself as a last resort.
+    function captureGrab(on) {
+        Quickshell.execDetached(["hyprctl", "dispatch", "submap",
+                                 on ? "hyprshell-capture" : "reset"]);
+    }
+
+    onModeChanged: captureGrab(mode === "capture")
 
     // Qt key enum -> the name Hyprland expects in a bind line.
     function keyName(event) {
@@ -174,9 +99,9 @@ PanelWindow {
     }
 
     function startRename() {
-        const b = filtered[sel];
-        if (!b) return;
-        renameField.text = labelFor(b) || actionLabel(b);
+        const c = filtered[sel];
+        if (!c) return;
+        renameField.text = c.name;
         mode = "rename";
         renameField.forceActiveFocus();
         renameField.selectAll();
@@ -184,14 +109,8 @@ PanelWindow {
 
     function confirm() {
         if (mode === "rename") {
-            const b = filtered[sel];
-            if (b) {
-                const copy = JSON.parse(JSON.stringify(labels));
-                const t = renameField.text.trim();
-                if (t === "") delete copy[bindKey(b)]; else copy[bindKey(b)] = t;
-                labels = copy;
-                persistLabels();
-            }
+            const c = filtered[sel];
+            if (c) Commands.setName(c.id, renameField.text);
             mode = "search";
             input.forceActiveFocus();
             return;
@@ -200,11 +119,9 @@ PanelWindow {
     }
 
     function runSelected() {
-        const b = filtered[sel];
+        const c = filtered[sel];
         ShellState.paletteOpen = false;
-        if (!b) return;
-        const arg = (b.arg || "");
-        Quickshell.execDetached(["hyprctl", "dispatch", b.dispatcher, arg]);
+        if (c) Commands.run(c.id);
     }
 
     Rectangle {
@@ -274,8 +191,8 @@ PanelWindow {
                             if (event.key === Qt.Key_Escape) return;   // handled above
                             const name = win.keyName(event);
                             win.capturePreview = mods.concat([name]).join(" + ");
-                            const b = win.filtered[win.sel];
-                            if (b && mods.length > 0) win.persistRebind(b, mods, name);
+                            const c = win.filtered[win.sel];
+                            if (c && mods.length > 0) Commands.rebind(c.id, mods, name);
                             win.mode = "search";
                             ShellState.paletteOpen = false;
                             event.accepted = true; return;
@@ -356,6 +273,9 @@ PanelWindow {
                         spacing: 12
 
                         Rectangle {
+                            // Store-only commands can be unbound; then there is
+                            // no pill rather than an empty one.
+                            visible: shortcut.text !== ""
                             implicitWidth: shortcut.implicitWidth + 16
                             implicitHeight: 22
                             radius: 6
@@ -363,7 +283,7 @@ PanelWindow {
                             Text {
                                 id: shortcut
                                 anchors.centerIn: parent
-                                text: win.bindLabel(modelData)
+                                text: win.shortcutLabel(modelData)
                                 color: Theme.fg
                                 font.family: Theme.font
                                 font.pixelSize: Theme.fontSize - 1
@@ -373,8 +293,7 @@ PanelWindow {
 
                         Text {
                             Layout.fillWidth: true
-                            text: win.labelFor(modelData) !== "" ? win.labelFor(modelData)
-                                                                : win.actionLabel(modelData)
+                            text: modelData.name
                             color: index === win.sel ? Theme.fg : Theme.fgDim
                             font.family: Theme.font
                             font.pixelSize: Theme.fontSize
@@ -394,7 +313,7 @@ PanelWindow {
             // ---- footer ----
             Text {
                 Layout.fillWidth: true
-                text: win.filtered.length + " of " + win.allBinds.length +
+                text: win.filtered.length + " of " + Commands.list.length +
                       " bindings   ·   Enter run   ·   F2 rename   ·   Ctrl+R rebind   ·   Esc close"
                 color: Theme.fgDim
                 font.family: Theme.font

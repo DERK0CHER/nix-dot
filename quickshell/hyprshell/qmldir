@@ -1,6 +1,7 @@
 # Generated: quickshell resolves ONLY what this file lists once a qmldir exists,
 # so every component needs an entry here, not just the singletons.
 
+singleton Commands 1.0 Commands.qml
 singleton Host 1.0 Host.qml
 singleton Notifs 1.0 Notifs.qml
 singleton ShellState 1.0 ShellState.qml
