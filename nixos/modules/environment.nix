@@ -55,12 +55,7 @@
   programs.xwayland.enable = true;
   programs.dconf.enable = true;
 
-  # --- Portals ---
-  xdg.portal = {
-    enable = true;
-    config.common.default = "gtk"; # Zwinge GTK als Fallback
-    extraPortals = [pkgs.xdg-desktop-portal-gtk];
-  };
+  # --- Portals --- (owned by modules/desktop.nix)
 
   # WICHTIG: Erlaube Flatpak den Zugriff auf die Grafiktreiber von NixOS
   hardware.graphics.enable = true;
@@ -71,8 +66,6 @@
 
   # 4. Flatpak selbst aktivieren
   services.flatpak.enable = true;
-
-  environment.systemPackages = with pkgs; [waybar];
 
   # --- Audio via PipeWire ---
   services.pulseaudio.enable = false;

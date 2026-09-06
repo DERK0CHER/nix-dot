@@ -1,0 +1,7 @@
+/* Adwaita tweak: slightly translucent windows (Hyprland blur via layer/window rules) */
+window {
+  background-color: alpha(@theme_bg_color, 0.92);
+}
+headerbar, .titlebar {
+  background-color: alpha(@theme_bg_color, 0.85);
+}

@@ -78,12 +78,17 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | `hypr/` | Hyprland config — split into `hyprland/` (base) and `custom/` (user overrides) |
 | `hypr/hyprland/general.conf` | Monitor, input, animations, decorations, misc |
 | `hypr/hyprland/keybinds.conf` | All keybindings |
-| `hypr/hyprland/rules.conf` | Window/layer/workspace rules |
-| `hypr/hyprland/execs.conf` | Autostart programs |
+| `hypr/hyprland/rules.conf` | Window/layer/workspace rules (0.55 `match:` syntax) |
+| `hypr/hyprland/execs.conf` | Autostart programs (starts `qs -c hyprshell`) |
 | `hypr/hyprland/env.conf` | Environment variables |
-| `hypr/custom/` | Local overrides sourced after base (blur/anims off by default) |
-| `nixos/modules/` | NixOS system modules (packages, environment, users) |
-| `home-manager/` | Home Manager flake (fish, Hyprland, Niri) |
+| `hypr/hyprland/gaming.conf` | Game-related rules / options |
+| `hypr/custom/` | Local overrides sourced after base |
+| `hypr/scripts/game-mode` | Game mode script: `on | off | toggle | status | run [--exclusive] -- <cmd>` |
+| `quickshell/hyprshell/` | The desktop shell (Quickshell): bar, app menu, quick settings, notifications; `shell.qml`, `State.qml`, `Theme.qml` |
+| `nixos/modules/desktop.nix` | Shell packages, Adwaita theming, portals, fonts, Qt platform theme |
+| `nixos/modules/gaming.nix` | gamemode, scx, steam, kernel/sysctl tuning |
+| `nixos/modules/` | Other NixOS system modules (packages, environment, users, hyprland) |
+| `home-manager/` | Home Manager flake (fish, GTK/Qt/dconf theming, user packages) |
 | `fish/` | Fish shell config |
 | `nvim/` | Neovim config (neotex setup) |
 | `niri/` | Niri compositor config |
@@ -91,7 +96,11 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ### Workflow notes
 
 - Edit `hypr/hyprland/*.conf` for base config; `hypr/custom/*.conf` for personal overrides.
-- `custom/general.conf` currently disables blur and animations (performance mode).
+- `waybar/` and `dunst/` were removed; the shell is Quickshell: `qs -c hyprshell`.
+  IPC: `qs -c hyprshell ipc call shell <toggleQuickSettings|toggleNotifications|toggleAppMenu|toggleBar|toggleLauncher|setGameMode true|false>`.
+- Layer namespaces: `hyprshell-bar`, `hyprshell-panel`, `hyprshell-osd`, `hyprshell-notif`.
+- Hyprland ≥ 0.55 rule syntax: `windowrule = float on, center on, match:title ^(Open File)`; `layerrule = blur on, match:namespace ^hyprshell-bar$`.
+- Keep `AQ_NO_ATOMIC=1` (nixos/modules/hyprland.nix) and `misc:vrr = 0` — atomic DRM + VRR crash on the RX 9060 XT. No NVIDIA config.
 - NixOS modules live at `/etc/nixos/` symlinked from `nixos/`; rebuild with `sudo nixos-rebuild switch`.
 - Home Manager: `cd home-manager && home-manager switch --flake .#beba`.
 - Hyprland uses `windowrule` (not deprecated `windowrulev2`) and `shadow {}`/`blur {}` nested blocks.

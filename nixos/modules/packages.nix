@@ -35,7 +35,6 @@
     nautilus
     feh
     gimp
-    dunst
     libnotify
 
     ttfautohint
@@ -50,9 +49,6 @@
     spotify-player
     spotify-cli-linux
     # Hyprland essentials
-    waybar
-    wofi
-    dunst
     hyprshot
     hyprcursor
     hyprpaper
@@ -111,7 +107,6 @@
     iosevka
   ];
   programs.thunar.enable = true;
-  programs.waybar.enable = true;
 
   services.gvfs.enable = true; # Mount, trash, and other functionalities
   services.tumbler.enable = true; # Thumbnail support for images

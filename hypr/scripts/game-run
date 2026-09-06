@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# game-run — thin wrapper: launch a command inside game mode.
+#   game-run [--exclusive] [--single-monitor] [--] CMD [ARGS...]
+# Example: game-run --exclusive -- steam -applaunch 1245620
+set -euo pipefail
+exec "$(dirname "$(readlink -f "$0")")/game-mode" run "$@"
