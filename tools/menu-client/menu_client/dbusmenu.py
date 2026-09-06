@@ -125,8 +125,13 @@ def activate(name, path, node_id, **_ignored):
         pass
 
     try:
+        # The third argument is a VARIANT in the spec's (isvu) signature, not a
+        # plain string. Without variant_level the call goes out as "issu" and a
+        # real Qt app rejects it with UnknownMethod - the mocks accept both,
+        # which is why the test suite never caught this.
         iface.Event(dbus.Int32(item_id), dbus.String("clicked"),
-                    dbus.String(""), dbus.UInt32(int(time.time())),
+                    dbus.String("", variant_level=1),
+                    dbus.UInt32(int(time.time())),
                     timeout=core.CALL_TIMEOUT)
     except dbus.DBusException as exc:
         if core._is_gone(exc):

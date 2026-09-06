@@ -72,6 +72,7 @@ PanelWindow {
             spacing: Theme.gap
 
             Workspaces {
+                id: workspaces
                 screen: root.screen
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -119,6 +120,23 @@ PanelWindow {
                         ShellState.appMenuOpen = next;
                     }
                 }
+            }
+
+            // The focused window's own menu (File, Edit, ...), exported over
+            // org_kde_kwin_appmenu and read by AppMenuSource. Empty - and zero
+            // width - for windows that export nothing.
+            MenuBar {
+                id: globalMenu
+                anchors.verticalCenter: parent.verticalCenter
+                barScreen: root.screen
+                barWindow: root
+                active: root.focusedHere && ShellState.barVisible
+                // Never grow into the centred clock: everything left of the
+                // clock has to fit in half the bar, minus what the workspace
+                // pills and the app name already took, minus room for the clock
+                // itself. Whatever is left over is what the menu may use.
+                maxWidth: Math.max(0, content.width / 2 - 100 - workspaces.width
+                                      - appButton.width - Theme.gap * 3)
             }
         }
 
