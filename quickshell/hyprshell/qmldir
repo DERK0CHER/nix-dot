@@ -21,6 +21,7 @@ QsToggle 1.0 QsToggle.qml
 QuickSettings 1.0 QuickSettings.qml
 Services 1.0 Services.qml
 StatusPill 1.0 StatusPill.qml
+Switcher 1.0 Switcher.qml
 Workspaces 1.0 Workspaces.qml
 CommandEditor 1.0 CommandEditor.qml
 CommandPalette 1.0 CommandPalette.qml
