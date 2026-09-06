@@ -1,0 +1,409 @@
+#!/usr/bin/env bash
+# game-mode-selftest — exercise hypr/scripts/game-mode against the live
+# compositor and assert the observable state after every step.
+#
+#   game-mode-selftest [-v]
+#
+# Safe to run on a desktop you are using:
+#   * every on/off cycle targets a deliberately non-existent window address, so
+#     no real window is ever focused, tiled, fullscreened or focus-locked;
+#   * the one test that blanks a monitor turns it back on in the same step,
+#     with throttling disabled so the gap stays well under a second;
+#   * an EXIT trap restores game mode, both monitors and the compositor even
+#     when an assertion fails or the run is interrupted.
+#
+# Exits 0 only if every assertion passed.
+set -uo pipefail
+
+GM="${GAME_MODE:-$(dirname -- "$(readlink -f -- "$0")")/game-mode}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE_FILE="$RUNTIME_DIR/hypr-game-mode.state"
+THROTTLE_STATE="$RUNTIME_DIR/hypr-game-mode.throttled"
+CONFIRM_FILE="$RUNTIME_DIR/hypr-game-mode.leaving"
+
+# A window address that cannot exist. game-mode must notice and leave every
+# real window alone; that is what makes this script safe to run mid-session.
+FAKE_ADDR=0xdeadbeef
+SELFTEST_TAG=gamemode-selftest
+
+VERBOSE=0
+[[ "${1:-}" == "-v" ]] && VERBOSE=1
+
+PASS=0
+FAIL=0
+FAILED_NAMES=()
+
+say()  { printf '%s\n' "$*"; }
+info() { [[ $VERBOSE -eq 1 ]] && printf '      %s\n' "$*"; return 0; }
+
+ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
+bad()  { FAIL=$((FAIL + 1)); FAILED_NAMES+=("$1"); printf '  FAIL %s\n       %s\n' "$1" "$2"; }
+
+check() {
+  # $1 = name, $2 = expected, $3 = actual
+  if [[ "$2" == "$3" ]]; then ok "$1"; else bad "$1" "expected [$2], got [$3]"; fi
+}
+
+check_ne() {
+  if [[ "$2" != "$3" ]]; then ok "$1"; else bad "$1" "expected anything but [$2]"; fi
+}
+
+# ------------------------------------------------------------- utilities ---
+opt_int() { hyprctl getoption "$1" -j 2>/dev/null | jq -r '.int // empty'; }
+opt_str() { hyprctl getoption "$1" -j 2>/dev/null | jq -r '.str // ""'; }
+opt_any() { hyprctl getoption "$1" -j 2>/dev/null | jq -r '.custom // (.int|tostring) // .str // ""'; }
+
+dpms_of()  { hyprctl monitors -j 2>/dev/null | jq -r --arg m "$1" '.[] | select(.name==$m) | .dpmsStatus'; }
+proc_nice() { awk '{print $19}' "/proc/$1/stat" 2>/dev/null; }
+state_of() { sed -n "s/^$1=//p" "$STATE_FILE" 2>/dev/null | head -n1; }
+gm_on()    { [[ -f "$STATE_FILE" ]]; }
+
+# The compositor knobs game-mode is contracted to change, as one comparable
+# string. Used for the before/after equality check.
+compositor_fingerprint() {
+  local o
+  for o in animations:enabled decoration:blur:enabled decoration:shadow:enabled \
+           decoration:rounding general:gaps_in general:gaps_out general:border_size \
+           input:follow_mouse misc:mouse_move_enables_dpms misc:key_press_enables_dpms; do
+    printf '%s=%s;' "$o" "$(opt_any "$o")"
+  done
+  printf 'kb=%s;' "$(opt_str input:kb_options)"
+}
+
+window_fingerprint() {
+  hyprctl clients -j 2>/dev/null \
+    | jq -cS '[.[] | {a:.address, fs:.fullscreen, fsc:.fullscreenClient, fl:.floating, t:.tags}] | sort_by(.a)'
+}
+
+# Windows that existed when we started and have since changed. Windows that
+# appeared or closed while the test ran are ignored on purpose — this is meant
+# to run on a desktop somebody is using, and a new window is not a regression.
+windows_drifted() {
+  jq -n --argjson base "$1" --argjson now "$(window_fingerprint)" '
+    ($now | map({key: .a, value: .}) | from_entries) as $by
+    | [ $base[] | select($by[.a] != null) | select($by[.a] != .)
+        | "\(.a): \(.) -> \($by[.a])" ] | join("; ")'  | sed 's/^"//; s/"$//'
+}
+
+# ------------------------------------------------------------- restoring ---
+BASE_COMPOSITOR=""
+BASE_WINDOWS=""
+BASE_PROFILE=""
+
+restore() {
+  local rc=$?
+  say ""
+  say "restoring…"
+  "$GM" off >/dev/null 2>&1 || true
+  rm -f -- "$CONFIRM_FILE" "$THROTTLE_STATE" 2>/dev/null || true
+  # Never leave a panel dark, whatever happened above.
+  local m
+  for m in $(hyprctl monitors -j 2>/dev/null | jq -r '.[].name'); do
+    [[ "$(dpms_of "$m")" == "false" ]] && hyprctl dispatch dpms on "$m" >/dev/null 2>&1
+  done
+  # Drop any windowrule/tag this script or a failed run left behind.
+  local a
+  for a in $(hyprctl clients -j 2>/dev/null \
+             | jq -r --arg t "$SELFTEST_TAG" '.[] | select(.tags | index($t)) | .address'); do
+    hyprctl dispatch tagwindow -- "-$SELFTEST_TAG" "address:$a" >/dev/null 2>&1
+  done
+  hyprctl reload >/dev/null 2>&1 || true
+  [[ -n "$BASE_PROFILE" ]] && powerprofilesctl set "$BASE_PROFILE" >/dev/null 2>&1
+  return $rc
+}
+trap restore EXIT INT TERM HUP
+
+# ------------------------------------------------------------ pre-flight ---
+for t in hyprctl jq; do
+  command -v "$t" >/dev/null 2>&1 || { say "need $t"; exit 2; }
+done
+[[ -x "$GM" ]] || { say "not executable: $GM"; exit 2; }
+hyprctl monitors -j >/dev/null 2>&1 || { say "no live Hyprland instance"; exit 2; }
+if gm_on; then
+  say "game mode is already on — turning it off first"
+  "$GM" off >/dev/null 2>&1
+fi
+
+BASE_COMPOSITOR="$(compositor_fingerprint)"
+BASE_WINDOWS="$(window_fingerprint)"
+command -v powerprofilesctl >/dev/null 2>&1 && BASE_PROFILE="$(powerprofilesctl get 2>/dev/null || true)"
+
+say "game-mode selftest — $GM"
+say ""
+
+# =========================================================== 1. static ===
+say "static checks"
+out="$(bash -n "$GM" 2>&1)"; check "game-mode parses" "" "$out"
+
+# The rule game-mode ships must be one this Hyprland actually accepts. hyprctl
+# exits 0 on a rejected keyword and only prints the error, so compare output.
+RULE="$(sed -n "s/^GAME_WINDOW_RULE='\(.*\)'$/\1/p" "$GM" | head -n1)"
+if [[ -z "$RULE" ]]; then
+  bad "windowrule string found in game-mode" "no GAME_WINDOW_RULE= line"
+else
+  ok "windowrule string found in game-mode"
+  info "rule: $RULE"
+  out="$(hyprctl keyword windowrule "$RULE, match:tag $SELFTEST_TAG" 2>&1)"
+  check "Hyprland accepts game-mode's windowrule" "ok" "$out"
+  hyprctl reload >/dev/null 2>&1
+fi
+
+# The rule can only reach a window through a tag (0.56 has no match:address),
+# so the tag round trip is load bearing. A leading "-" needs "--" or hyprctl
+# eats it as a flag and the tag is never removed.
+TAGGET="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')"
+if [[ -z "$TAGGET" ]]; then
+  info "no focused window; skipping tag round trip"
+else
+  hyprctl dispatch tagwindow "+$SELFTEST_TAG" "address:$TAGGET" >/dev/null 2>&1
+  got="$(hyprctl clients -j | jq -r --arg a "$TAGGET" --arg t "$SELFTEST_TAG" \
+         '.[] | select(.address==$a) | (.tags | index($t) != null)')"
+  check "tagwindow applies a tag" "true" "$got"
+  hyprctl dispatch tagwindow -- "-$SELFTEST_TAG" "address:$TAGGET" >/dev/null 2>&1
+  got="$(hyprctl clients -j | jq -r --arg a "$TAGGET" --arg t "$SELFTEST_TAG" \
+         '.[] | select(.address==$a) | (.tags | index($t) != null)')"
+  check "tagwindow removes a tag" "false" "$got"
+fi
+
+# The on/off cycles below target a window address that does not exist, so the
+# game pid is 0 and set_nice/restore_nice short-circuit. Exercise them here
+# against a process this script owns, in a shell with the same `set -euo
+# pipefail` as game-mode: a command substitution over a pipeline whose first
+# stage exits non-zero (pgrep finds no children) aborts the whole script, and
+# when that happened inside set_nice, everything cmd_on does afterwards —
+# throttling, keyboard layout, gamemoded, monitor, governor — was silently
+# skipped while `on` still looked like it had worked.
+say ""
+say "priority handling"
+sleep 30 &
+victim=$!
+sleep 0.2
+nice_probe="$(bash -c '
+  set -euo pipefail
+  have(){ command -v "$1" >/dev/null 2>&1; }
+  source <(sed -n "/^nice_of_pid()/,/^}/p;/^nice_floor()/,/^}/p;/^set_nice()/,/^}/p;/^restore_nice()/,/^}/p" "$1")
+  p="$2"
+  orig="$(nice_of_pid "$p")"
+  floor="$(nice_floor)"
+  set_nice "$p" -15
+  boosted="$(nice_of_pid "$p")"
+  restore_nice "$p" "$orig"
+  restored="$(nice_of_pid "$p")"
+  restore_nice "$p" ""
+  after_empty="$(nice_of_pid "$p")"
+  printf "%s|%s|%s|%s|%s\n" "$orig" "$floor" "$boosted" "$restored" "$after_empty"
+' _ "$GM" "$victim" 2>&1)"
+kill "$victim" 2>/dev/null
+wait "$victim" 2>/dev/null
+
+if [[ "$nice_probe" =~ ^(-?[0-9]+)\|(-?[0-9]+)\|(-?[0-9]+)\|(-?[0-9]+)\|(-?[0-9]+)$ ]]; then
+  ok "set_nice runs to completion under set -euo pipefail"
+  n_orig="${BASH_REMATCH[1]}"; n_floor="${BASH_REMATCH[2]}"
+  n_boost="${BASH_REMATCH[3]}"; n_back="${BASH_REMATCH[4]}"; n_empty="${BASH_REMATCH[5]}"
+  info "orig=$n_orig floor=$n_floor boosted=$n_boost restored=$n_back"
+  # -15 is below what RLIMIT_NICE allows here, so the clamp is what makes the
+  # boost happen at all; without it renice failed with EPERM and did nothing.
+  check "set_nice boosts down to the achievable floor" "$n_floor" "$n_boost"
+  check "restore_nice puts the recorded value back"    "$n_orig"  "$n_back"
+  check "restore_nice without a record changes nothing" "$n_orig" "$n_empty"
+else
+  bad "set_nice runs to completion under set -euo pipefail" "probe output: [$nice_probe]"
+fi
+
+# =========================================================== 2. status ===
+say ""
+say "status"
+out="$("$GM" status 2>/dev/null)"; rc=$?
+check "status exits 1 when off" "1" "$rc"
+check "status says off"         "off" "$(printf '%s\n' "$out" | head -n1)"
+out="$("$GM" status -q 2>/dev/null)"; rc=$?
+check "status -q exits 1 when off" "1" "$rc"
+check "status -q prints nothing"   "" "$out"
+out="$("$GM" nonsense 2>/dev/null)"; check "unknown subcommand exits 2" "2" "$?"
+
+# ============================================== 3. full on/off cycle ===
+say ""
+say "on / off cycle (--all-monitors, throttling live)"
+stdout="$("$GM" on "$FAKE_ADDR" --all-monitors 2>/dev/null)"
+check "on prints nothing on stdout" "" "$stdout"
+check "on creates the state file"   "yes" "$(gm_on && echo yes || echo no)"
+check "no real window was touched"  "" "$(windows_drifted "$BASE_WINDOWS")"
+check "no window carries the game tag" "0" \
+      "$(hyprctl clients -j | jq -r '[.[] | select(.tags | index("gamemode"))] | length')"
+
+check "animations off"  "0" "$(opt_int animations:enabled)"
+check "blur off"        "0" "$(opt_int decoration:blur:enabled)"
+check "shadow off"      "0" "$(opt_int decoration:shadow:enabled)"
+check "rounding 0"      "0" "$(opt_int decoration:rounding)"
+check "border_size 0"   "0" "$(opt_int general:border_size)"
+check "gaps_in 0"       "0 0 0 0" "$(opt_any general:gaps_in)"
+check "gaps_out 0"      "0 0 0 0" "$(opt_any general:gaps_out)"
+check "kb_options cleared" "" "$(opt_str input:kb_options)"
+# Without these two, Hyprland turns every output back on at the next keypress
+# and blanking the secondary monitor lasts about 50 ms.
+check "mouse_move_enables_dpms off" "0" "$(opt_int misc:mouse_move_enables_dpms)"
+check "key_press_enables_dpms off"  "0" "$(opt_int misc:key_press_enables_dpms)"
+
+check "state records the previous kb_options" "caps" \
+      "$(case "$(state_of kb_options)" in *caps*) echo caps ;; *) echo "[$(state_of kb_options)]" ;; esac)"
+check_ne "state records a previous governor" "" "$(state_of governor)"
+
+# throttling
+if [[ -f "$THROTTLE_STATE" ]]; then
+  ok "throttle state file exists"
+  bad_lines="$(awk '$1 !~ /^[0-9]+$/ || $2 !~ /^-?[0-9]+$/' "$THROTTLE_STATE" | wc -l)"
+  check "every throttle entry is numeric" "0" "$bad_lines"
+  # ps prints "-" for RT/idle-class processes; those must be skipped, not
+  # throttled with an unrestorable nice of "-".
+  n19=0
+  while read -r p _; do
+    [[ "$(proc_nice "$p")" == "19" ]] && n19=$((n19 + 1))
+  done < "$THROTTLE_STATE"
+  if (( n19 > 0 )); then ok "background processes are at nice 19 ($n19)"
+  else bad "background processes are at nice 19" "none of the recorded pids is at 19"; fi
+
+  protected="$(while read -r p _; do
+                 c="$(ps -o comm= -p "$p" 2>/dev/null)"
+                 case "$c" in Hyprland|qs|pipewire|wireplumber|easyeffects|dbus-broker) echo "$c" ;; esac
+               done < "$THROTTLE_STATE" | sort -u | tr '\n' ' ')"
+  check "the compositor/audio chain was not throttled" "" "$protected"
+  cp -- "$THROTTLE_STATE" "$RUNTIME_DIR/hypr-game-mode.selftest-expected" 2>/dev/null
+else
+  bad "throttle state file exists" "$THROTTLE_STATE missing (GAME_MODE_THROTTLE unset?)"
+fi
+
+# status while on
+out="$("$GM" status 2>/dev/null)"; rc=$?
+check "status exits 0 when on" "0" "$rc"
+check "status says on"         "on" "$(printf '%s\n' "$out" | head -n1)"
+check "status reports the gpu vendor" "nvidia|amd|intel|unknown" \
+      "$(printf '%s\n' "$out" | sed -n 's/^gpu_vendor=//p' | grep -qE '^(nvidia|amd|intel|unknown)$' && echo 'nvidia|amd|intel|unknown' || echo "$(printf '%s\n' "$out" | sed -n 's/^gpu_vendor=//p')")"
+
+# on is idempotent
+before="$(cat "$STATE_FILE")"
+"$GM" on "$FAKE_ADDR" --all-monitors >/dev/null 2>&1
+check "a second on does not rewrite the state" "$before" "$(cat "$STATE_FILE")"
+
+# ---- off
+stdout="$("$GM" off 2>/dev/null)"
+check "off prints nothing on stdout" "" "$stdout"
+check "off removes the state file"   "no"  "$(gm_on && echo yes || echo no)"
+check "off removes the throttle file" "gone" \
+      "$([[ -e "$THROTTLE_STATE" ]] && echo present || echo gone)"
+check "compositor restored" "$BASE_COMPOSITOR" "$(compositor_fingerprint)"
+check "windows untouched"   "" "$(windows_drifted "$BASE_WINDOWS")"
+
+# every throttled process is back where it was
+EXPECT="$RUNTIME_DIR/hypr-game-mode.selftest-expected"
+if [[ -f "$EXPECT" ]]; then
+  stuck=""
+  while read -r p want; do
+    [[ -d "/proc/$p" ]] || continue
+    now="$(proc_nice "$p")"
+    [[ "$now" == "$want" ]] || stuck="$stuck $p($(ps -o comm= -p "$p" 2>/dev/null):$want->$now)"
+  done < "$EXPECT"
+  check "every throttled process is back at its old nice" "" "$stuck"
+  rm -f -- "$EXPECT"
+fi
+
+if [[ -n "$BASE_PROFILE" ]]; then
+  check "power profile restored" "$BASE_PROFILE" "$(powerprofilesctl get 2>/dev/null)"
+fi
+
+# off when already off must be a clean no-op that also clears strays
+printf '99999 3\n' > "$THROTTLE_STATE"
+: > "$CONFIRM_FILE"
+"$GM" off >/dev/null 2>&1
+check "off when off clears a stale throttle file" "gone" \
+      "$([[ -e "$THROTTLE_STATE" ]] && echo present || echo gone)"
+check "off when off clears a stale confirm file" "gone" \
+      "$([[ -e "$CONFIRM_FILE" ]] && echo present || echo gone)"
+
+# ================================================ 4. monitor blanking ===
+say ""
+say "secondary monitor (blanked and restored inside one step)"
+MONS="$(hyprctl monitors -j | jq -r '[.[] | select(.disabled != true)] | length')"
+if [[ "$MONS" -lt 2 ]]; then
+  info "only $MONS monitor(s) — skipping"
+else
+  HOME_MON="$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')"
+  GAME_MODE_THROTTLE=0 "$GM" on "$FAKE_ADDR" >/dev/null 2>&1
+  SEC="$(state_of secondary)"
+  SEC_DPMS="$(dpms_of "$SEC")"
+  "$GM" off >/dev/null 2>&1
+  check_ne "the blanked monitor is not the one in use" "$HOME_MON" "$SEC"
+  check "the secondary monitor was blanked" "false" "$SEC_DPMS"
+  sleep 0.3
+  check "the secondary monitor is back on" "true" "$(dpms_of "$SEC")"
+  check "the monitor in use was never blanked" "true" "$(dpms_of "$HOME_MON")"
+
+  # --all-monitors must leave both alone.
+  GAME_MODE_THROTTLE=0 "$GM" on "$FAKE_ADDR" --all-monitors >/dev/null 2>&1
+  both="$(hyprctl monitors -j | jq -r '[.[] | .dpmsStatus] | unique | join(",")')"
+  "$GM" off >/dev/null 2>&1
+  check "--all-monitors blanks nothing" "true" "$both"
+fi
+
+# ========================================================== 5. toggle ===
+say ""
+say "toggle"
+"$GM" off >/dev/null 2>&1
+out="$(GAME_MODE_THROTTLE=0 "$GM" toggle "$FAKE_ADDR" --all-monitors 2>/dev/null)"
+check "toggle from off turns on"       "yes" "$(gm_on && echo yes || echo no)"
+check "toggle from off prints nothing" ""    "$out"
+out="$("$GM" toggle 2>/dev/null)"
+check "first toggle off asks for confirmation" "confirm-required" "$out"
+check "first toggle off stays on"              "yes" "$(gm_on && echo yes || echo no)"
+check "the confirm stamp exists" "present" "$([[ -e "$CONFIRM_FILE" ]] && echo present || echo gone)"
+"$GM" toggle >/dev/null 2>&1
+check "second toggle within the window turns off" "no" "$(gm_on && echo yes || echo no)"
+check "the confirm stamp is cleared" "gone" "$([[ -e "$CONFIRM_FILE" ]] && echo present || echo gone)"
+
+# the confirmation must expire
+GAME_MODE_CONFIRM_SECONDS=1 GAME_MODE_THROTTLE=0 "$GM" on "$FAKE_ADDR" --all-monitors >/dev/null 2>&1
+GAME_MODE_CONFIRM_SECONDS=1 "$GM" toggle >/dev/null 2>&1
+sleep 2
+out="$(GAME_MODE_CONFIRM_SECONDS=1 "$GM" toggle 2>/dev/null)"
+check "an expired confirmation re-arms instead of leaving" "confirm-required" "$out"
+check "and game mode is still on" "yes" "$(gm_on && echo yes || echo no)"
+GAME_MODE_CONFIRM_SECONDS=1 "$GM" toggle >/dev/null 2>&1
+check "the follow-up press leaves game mode" "no" "$(gm_on && echo yes || echo no)"
+
+# ============================================================= 6. run ===
+say ""
+say "run"
+start="$(date +%s)"
+"$GM" run --all-monitors -- sleep 1 >/dev/null 2>&1
+elapsed=$(( $(date +%s) - start ))
+check "run waits for the command" "yes" "$([[ $elapsed -ge 1 ]] && echo yes || echo no)"
+check "run leaves no state file"    "gone" "$([[ -e "$STATE_FILE" ]] && echo present || echo gone)"
+check "run leaves no throttle file" "gone" "$([[ -e "$THROTTLE_STATE" ]] && echo present || echo gone)"
+check "run restored the compositor" "$BASE_COMPOSITOR" "$(compositor_fingerprint)"
+out="$("$GM" run 2>/dev/null)"; check "run without a command exits 2" "2" "$?"
+
+# run must tear down even when it is killed mid-flight
+"$GM" run --all-monitors -- sleep 30 >/dev/null 2>&1 &
+runpid=$!
+sleep 1
+kill -TERM "$runpid" 2>/dev/null
+wait "$runpid" 2>/dev/null
+sleep 0.5
+check "a killed run leaves no state file" "gone" "$([[ -e "$STATE_FILE" ]] && echo present || echo gone)"
+check "a killed run restored the compositor" "$BASE_COMPOSITOR" "$(compositor_fingerprint)"
+
+# ========================================================== epilogue ===
+say ""
+check "final: game mode is off"        "no" "$(gm_on && echo yes || echo no)"
+check "final: compositor at baseline"  "$BASE_COMPOSITOR" "$(compositor_fingerprint)"
+check "final: windows at baseline"     "" "$(windows_drifted "$BASE_WINDOWS")"
+check "final: no monitor is blanked"   "" \
+      "$(hyprctl monitors -j | jq -r '[.[] | select(.dpmsStatus == false) | .name] | join(",")')"
+
+say ""
+if (( FAIL == 0 )); then
+  say "PASS  $PASS assertions"
+  exit 0
+fi
+say "FAIL  $FAIL of $((PASS + FAIL)) assertions"
+printf '  - %s\n' "${FAILED_NAMES[@]}"
+exit 1

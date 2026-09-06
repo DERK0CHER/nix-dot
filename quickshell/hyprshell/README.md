@@ -15,7 +15,7 @@ IPC (bound to Super+I / N / A / B / G / Space in hypr/hyprland/binds.conf):
 
 Files: shell.qml (root + IPC), State.qml / Theme.qml (singletons), Bar.qml, Workspaces.qml,
 AppMenu.qml, Clock.qml, StatusPill.qml, QuickSettings.qml, NotificationCenter.qml,
-NotificationPopups.qml, Osd.qml, Commands.qml, CommandPalette.qml.
+NotificationPopups.qml, Osd.qml, Commands.qml, CommandPalette.qml, CommandEditor.qml.
 Layer namespaces: hyprshell-bar, hyprshell-panel, hyprshell-osd, hyprshell-notif.
 
 ## The command store
@@ -124,24 +124,102 @@ file to `bind-labels.json.migrated` — that rename is both the "already done" m
 and the backup. An id already present in `commands.json` is never overwritten by the
 migration.
 
+## Editing from the palette
+
+`CommandEditor.qml` is the editor sheet. It is an `Item` drawn over the palette,
+not a window of its own: the palette already holds an exclusive keyboard grab, and
+a second surface would only fight it for focus — which is also what lets the sheet
+record shortcuts.
+
+Reaching it:
+
+- **Ctrl+E** on the selected row, or the ✎ button that appears on it (hovering a
+  row selects it, so "hovered" and "selected" are the same row);
+- searching for something that does not exist yet shows a **Create command "…"**
+  row — click it or press Enter — which opens the sheet empty with the search text
+  as the name. That is the only way to an empty sheet, and it is deliberate: an
+  always-visible "new" button in a list of 140 bindings is noise.
+
+The sheet is name, exec (a `Shell` / `hyprctl` selector and the fields that type
+needs) and shortcut, with Save, Cancel and a destructive button that needs a second
+click within three seconds before it does anything. For a user command that button
+is **Delete**; for a discovered binding it is **Reset overrides**, because the
+binding itself is your Hyprland config's, not the palette's, to remove — resetting
+drops the name and exec overrides and the row goes back to what `hyprctl binds -j`
+says.
+
+Nothing in the sheet touches a file: it calls `Commands.saveCommand` and
+`Commands.deleteCommand`, which own both the JSON store and the generated config.
+
+## Shortcuts
+
+**Recording.** Press *Record* and the next combination is captured. Hyprland
+consumes its own binds before the focused surface ever sees them, so an exclusive
+keyboard grab is not enough — pressing Super+G while recording used to fire game
+mode. The palette therefore switches Hyprland into the empty `hyprshell-capture`
+submap (defined at the end of `hypr/hyprland/keybinds.conf`) and back with
+`submap reset`. A stuck submap is a session with no keybindings at all, so the
+reset is belt and braces: when recording ends, when the sheet is hidden, when the
+palette closes, and `escape` is bound inside the submap itself as a last resort.
+
+**Conflicts.** Before a shortcut can be saved, the combination is checked against
+the whole merged model — live Hyprland bindings and other user commands alike. If
+it is taken the sheet names the command that owns it and Save stays disabled until
+you either *Overwrite* (the old binding is unbound) or *Pick another*.
+
+**Where bindings go.** Both of these live in `hypr/custom/keybinds.conf`, which
+`hyprland.conf` sources last and on every start, so they win and they survive a
+Hyprland restart. Nothing outside the two marked blocks is ever touched:
+
+| Block | Written how | For |
+|-------|-------------|-----|
+| `# BEGIN hyprshell rebinds` | appended to | discovered bindings: one `unbind` of the old combo, one `bind` of the new. Hyprland stays the source of truth, a later pair simply wins, and `hyprctl binds -j` is re-read afterwards. |
+| `# BEGIN hyprshell user commands` | regenerated in full from the store | commands the palette owns. A line appears, changes and disappears with its entry, so it can never go stale. |
+
+Every generated `bind` is preceded by an `unbind` of the same combination:
+Hyprland fires *all* bindings on a key, so without it a combo that another line
+already claims would run both actions.
+
+A user command's shortcut is stored in `commands.json` — it has to be, because the
+generated block is rebuilt from the store and that is the only place that knows
+the combo. The live binding that results is then hidden from the list, so the
+command is one row and not two. Clearing a shortcut removes the entry's line and
+with it the binding.
+
+Editing the *exec* of a discovered binding rewrites its `bind` line too, so the
+key runs what the palette says it runs. Before this the two could disagree.
+
 ### API
 
 `Commands` exposes `list`, `search(query)`, `run(id)`, `upsert(cmd)`, `remove(id)`,
-`setName(id, name)`, plus `refresh()` (re-read the live bindings), `byId(id)` and
-`rebind(id, mods, key)`.
+`setName(id, name)`, `saveCommand(id, cmd, mods, key)`, `deleteCommand(id)`,
+`rebind(id, mods, key)`, `conflicts(mods, key, excludeId)`, `newId(name)`, plus
+`refresh()` (re-read the live bindings), `byId(id)`, `parseShortcut(s)` and
+`keyNameOf(qtKey, text)`.
 
 - `search(q)` requires every whitespace-separated term to match somewhere in the
   shortcut, name, technical spelling or description. There is no ranking: the order
   is the config's order, which is the order people memorise.
 - `setName(id, "")` deletes an override and the binding goes back to its technical
   spelling.
-- `rebind()` writes into the `# BEGIN hyprshell rebinds` block of
-  `hypr/custom/keybinds.conf` (sourced last, so it wins) and runs `hyprctl reload`.
-  It deliberately does **not** cache the new shortcut in the store: Hyprland stays
-  the source of truth for what is bound, so the palette can never claim a shortcut
-  the compositor does not have. Because a binding's id follows its key combination,
-  a rebind carries any rename over to the new id.
+- `saveCommand()` is the editor's one entry point — it writes the store entry
+  (pass `null` to leave the store alone) and makes the shortcut real, in one write
+  and one `hyprctl reload`. An empty `key` clears the shortcut. `rebind()` is just
+  `saveCommand(id, null, mods, key)`, which is the palette's Ctrl+R.
+- Because a discovered binding's id follows its key combination, a rebind carries
+  any rename or exec override over to the new id.
 
-Known gaps in this phase: a `shortcut` on a `source: "user"` command is descriptive
-only — the store does not yet install key bindings for commands that Hyprland does
-not already know about, and `rebind()` only works on discovered bindings.
+Caveats worth knowing:
+
+- Hand-editing a `shortcut` into `commands.json` changes what the palette *shows*
+  but does not install a binding: the generated block is written when the editor
+  saves, not when the store reloads. Open the command and press Save to make it
+  real.
+- *Reset overrides* on a discovered binding drops the store entry; it does not
+  undo lines already written into `hypr/custom/keybinds.conf`. Delete those by
+  hand if you want the original binding back.
+- One combination can carry several dispatchers (Alt+Tab is `cyclenext` *and*
+  `bringactivetotop`). Unbinding removes all of them, so rebinding one of a pair
+  takes its sibling with it.
+- The reserved `dbus` and `menu` exec types survive a round-trip through the file
+  but not through the editor, which only knows `shell` and `hyprctl`.

@@ -1,6 +1,7 @@
 # Generated: quickshell resolves ONLY what this file lists once a qmldir exists,
 # so every component needs an entry here, not just the singletons.
 
+singleton AppMenuSource 1.0 AppMenuSource.qml
 singleton Commands 1.0 Commands.qml
 singleton Host 1.0 Host.qml
 singleton Notifs 1.0 Notifs.qml
@@ -10,6 +11,8 @@ singleton Theme 1.0 Theme.qml
 AppMenu 1.0 AppMenu.qml
 Bar 1.0 Bar.qml
 Clock 1.0 Clock.qml
+MenuBar 1.0 MenuBar.qml
+MenuPopup 1.0 MenuPopup.qml
 NotificationCenter 1.0 NotificationCenter.qml
 NotificationPopups 1.0 NotificationPopups.qml
 Osd 1.0 Osd.qml
@@ -19,4 +22,5 @@ QuickSettings 1.0 QuickSettings.qml
 Services 1.0 Services.qml
 StatusPill 1.0 StatusPill.qml
 Workspaces 1.0 Workspaces.qml
+CommandEditor 1.0 CommandEditor.qml
 CommandPalette 1.0 CommandPalette.qml

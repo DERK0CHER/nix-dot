@@ -44,7 +44,7 @@ PanelWindow {
         onCleared: ShellState.paletteOpen = false
     }
 
-    property string mode: "search"     // search | rename | capture
+    property string mode: "search"     // search | rename | capture | edit
     property string capturePreview: ""
     property string query: ""
     property int sel: 0
@@ -62,7 +62,9 @@ PanelWindow {
             Commands.refresh();
             input.forceActiveFocus();
         } else {
-            // Never leave the session in the capture submap.
+            // Never leave the session in the capture submap, and never leave the
+            // editor sheet up - it drives a submap of its own while recording.
+            mode = "search";
             captureGrab(false);
         }
     }
@@ -83,19 +85,12 @@ PanelWindow {
 
     onModeChanged: captureGrab(mode === "capture")
 
-    // Qt key enum -> the name Hyprland expects in a bind line.
-    function keyName(event) {
-        if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z)
-            return String.fromCharCode("A".charCodeAt(0) + (event.key - Qt.Key_A));
-        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9)
-            return String.fromCharCode("0".charCodeAt(0) + (event.key - Qt.Key_0));
-        const map = {};
-        map[Qt.Key_Space]  = "Space";  map[Qt.Key_Return] = "Return";
-        map[Qt.Key_Tab]    = "Tab";    map[Qt.Key_Left]   = "Left";
-        map[Qt.Key_Right]  = "Right";  map[Qt.Key_Up]     = "Up";
-        map[Qt.Key_Down]   = "Down";   map[Qt.Key_Delete] = "Delete";
-        map[Qt.Key_Home]   = "Home";   map[Qt.Key_End]    = "End";
-        return map[event.key] || (event.text ? event.text.toUpperCase() : "?");
+    // Open the editor sheet on a row, or on nothing to create a command. The
+    // fields are filled before the sheet is shown: focus cannot be given to an
+    // item that is still hidden, so the sheet takes it when it appears.
+    function openEditor(cmd) {
+        editor.open(cmd || null, cmd ? "" : query.trim());
+        mode = "edit";
     }
 
     function startRename() {
@@ -115,7 +110,11 @@ PanelWindow {
             input.forceActiveFocus();
             return;
         }
-        if (mode === "search") runSelected();
+        // Nothing matched: Enter offers to turn the search text into a command.
+        if (mode === "search") {
+            if (filtered.length === 0 && query.trim() !== "") openEditor(null);
+            else runSelected();
+        }
     }
 
     function runSelected() {
@@ -135,6 +134,7 @@ PanelWindow {
             anchors.fill: parent
             anchors.margins: Theme.pad
             spacing: Theme.gap
+            visible: win.mode !== "edit"
 
             // ---- search ----
             Rectangle {
@@ -189,7 +189,7 @@ PanelWindow {
                                 event.accepted = true; return;
                             }
                             if (event.key === Qt.Key_Escape) return;   // handled above
-                            const name = win.keyName(event);
+                            const name = Commands.keyNameOf(event.key, event.text);
                             win.capturePreview = mods.concat([name]).join(" + ");
                             const c = win.filtered[win.sel];
                             if (c && mods.length > 0) Commands.rebind(c.id, mods, name);
@@ -199,6 +199,11 @@ PanelWindow {
                         }
                         if (event.key === Qt.Key_F2 && win.mode === "search") {
                             win.startRename(); event.accepted = true; return;
+                        }
+                        if (event.key === Qt.Key_E && (event.modifiers & Qt.ControlModifier)
+                            && win.mode === "search" && win.filtered[win.sel]) {
+                            win.openEditor(win.filtered[win.sel]);
+                            event.accepted = true; return;
                         }
                         if (event.key === Qt.Key_R && (event.modifiers & Qt.ControlModifier)
                             && win.mode === "search") {
@@ -266,6 +271,15 @@ PanelWindow {
                     radius: Theme.radiusSmall
                     color: index === win.sel ? Theme.card : "transparent"
 
+                    // Declared before the row so the edit button, which is part
+                    // of the row, sits on top of it and gets its own clicks.
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: win.sel = index
+                        onClicked: win.runSelected()
+                    }
+
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 10
@@ -299,14 +313,64 @@ PanelWindow {
                             font.pixelSize: Theme.fontSize
                             elide: Text.ElideRight
                         }
-                    }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onEntered: win.sel = index
-                        onClicked: win.runSelected()
+                        // Hover affordance. Hovering a row also selects it, so
+                        // "hovered" and "selected" are the same row.
+                        Rectangle {
+                            implicitWidth: 26
+                            implicitHeight: 22
+                            radius: 6
+                            visible: index === win.sel
+                            color: editHover.containsMouse ? Theme.cardHover : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "\u270e"
+                                color: Theme.fg
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontSize + 1
+                            }
+                            MouseArea {
+                                id: editHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.openEditor(modelData)
+                            }
+                        }
                     }
+                }
+            }
+
+            // ---- create ----
+            // The way to an empty editor: search for something that does not
+            // exist yet, then make it.
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 34
+                radius: Theme.radiusSmall
+                visible: win.mode === "search" && win.filtered.length === 0
+                         && win.query.trim() !== ""
+                color: Theme.card
+                border.width: 1
+                border.color: Theme.accent
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Create command “" + win.query.trim() + "” …"
+                    color: Theme.fg
+                    font.family: Theme.font
+                    font.pixelSize: Theme.fontSize
+                    elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.openEditor(null)
                 }
             }
 
@@ -314,10 +378,27 @@ PanelWindow {
             Text {
                 Layout.fillWidth: true
                 text: win.filtered.length + " of " + Commands.list.length +
-                      " bindings   ·   Enter run   ·   F2 rename   ·   Ctrl+R rebind   ·   Esc close"
+                      " commands   ·   Enter run   ·   F2 rename   ·   Ctrl+E edit"
+                      + "   ·   Ctrl+R rebind   ·   Esc close"
                 color: Theme.fgDim
                 font.family: Theme.font
                 font.pixelSize: Theme.fontSize - 2
+            }
+        }
+
+        // ---- editor sheet ----
+        // Drawn over the search column rather than in a window of its own: this
+        // window already holds the exclusive keyboard grab that recording a
+        // shortcut needs, and a second surface would have to fight it for focus.
+        CommandEditor {
+            id: editor
+            anchors.fill: parent
+            anchors.margins: Theme.pad
+            visible: win.mode === "edit"
+            onClosed: {
+                win.mode = "search";
+                Commands.refresh();
+                input.forceActiveFocus();
             }
         }
     }
