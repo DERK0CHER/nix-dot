@@ -78,7 +78,9 @@ gnome-system-monitor
 
 # ------------------------------------------------------ session / polkit / kr
 polkit
-polkit-gnome
+hyprpolkitagent                 # the agent the shell relies on; without ANY agent every
+                                # GUI privilege prompt fails silently (noctalia used to provide one)
+polkit-gnome                    # alternative agent, older GTK dialog; only one is needed
 gnome-keyring
 libsecret
 dbus
