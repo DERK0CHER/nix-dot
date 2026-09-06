@@ -76,3 +76,6 @@ go/
 libreoffice/
 nextjs-nodejs/
 turborepo/
+
+# Per-machine host selector (symlink created by arch/install.sh)
+hypr/host.conf

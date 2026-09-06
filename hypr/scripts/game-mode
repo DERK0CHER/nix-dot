@@ -2,23 +2,86 @@
 # game-mode — make one window (usually a game) exclusive and immutable, and
 # turn Hyprland's eye-candy off while it runs.
 #
-#   game-mode on [ADDRESS] [--single-monitor]
+#   game-mode on [ADDRESS] [--all-monitors]
 #   game-mode off
-#   game-mode toggle [ADDRESS] [--single-monitor]
+#   game-mode toggle [ADDRESS] [--all-monitors]
 #   game-mode status [-q]
-#   game-mode run [--exclusive] [--single-monitor] [--] CMD [ARGS...]
+#   game-mode run [--exclusive] [--all-monitors] [--] CMD [ARGS...]
 #
 # Everything is idempotent and degrades gracefully when qs (Quickshell),
 # gamemoded, powerprofilesctl, sudo, jq or the secondary monitor are missing.
+#
+# Host-portable: GPU (nvidia/amd/intel) and CPU (intel/amd) vendors are probed
+# at runtime, so the same file serves the NVIDIA+Intel and the AMD+AMD box.
+# Env overrides: GAME_MODE_SECONDARY_MONITOR, GAME_MODE_SHELL_CONFIG,
+# GAME_MODE_GAMESCOPE_{W,H,R}, GAME_MODE_SCX_SCHED, GAME_MODE_SCX_MODE.
 set -euo pipefail
 
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE_FILE="$RUNTIME_DIR/hypr-game-mode.state"
-SECONDARY_MONITOR="${GAME_MODE_SECONDARY_MONITOR:-DP-1}"
 SHELL_CFG="${GAME_MODE_SHELL_CONFIG:-hyprshell}"
-SINGLE_MONITOR=0
+# Blanking the secondary monitor is now the default: an idle 1080p panel still
+# costs the GPU a composite every frame. --all-monitors opts out.
+SINGLE_MONITOR=${GAME_MODE_SINGLE_MONITOR:-1}
+
+# gamescope geometry for `run --exclusive`. Per-host values belong in the
+# environment (see hypr/hosts/<host>.conf and the shell profile), not here:
+#   cachy: DP-1 LG ultrawide 3440x1440@160   nix: HDMI-A-1 2560x1440@144
+GAMESCOPE_W="${GAME_MODE_GAMESCOPE_W:-}"
+GAMESCOPE_H="${GAME_MODE_GAMESCOPE_H:-}"
+GAMESCOPE_R="${GAME_MODE_GAMESCOPE_R:-}"
+
+# Optional sched_ext scheduler to run while game mode is on. Empty disables it.
+SCX_SCHED="${GAME_MODE_SCX_SCHED:-lavd}"
+SCX_MODE="${GAME_MODE_SCX_MODE:-gaming}"
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---------------------------------------------------- vendor detection ---
+# Detected once, cached, and used by every vendor-specific branch below so
+# that a single script serves both hosts (NVIDIA/Intel here, AMD/AMD there).
+GPU_VENDOR=""   # nvidia | amd | intel | unknown
+CPU_VENDOR=""   # intel  | amd | unknown
+
+detect_gpu_vendor() {
+  [[ -n "$GPU_VENDOR" ]] && return 0
+  local line=""
+  if command -v lspci >/dev/null 2>&1; then
+    line="$(lspci -nn 2>/dev/null | grep -iE 'vga|3d|display' || true)"
+  fi
+  case "$line" in
+    *[Nn][Vv][Ii][Dd][Ii][Aa]*)                    GPU_VENDOR=nvidia ;;
+    *AMD*|*[Aa]dvanced\ Micro\ Devices*|*ATI*)     GPU_VENDOR=amd ;;
+    *[Ii]ntel*)                                    GPU_VENDOR=intel ;;
+    *)
+      # Fall back to loaded kernel modules when lspci is unavailable.
+      if [[ -d /sys/module/nvidia_drm ]]; then GPU_VENDOR=nvidia
+      elif [[ -d /sys/module/amdgpu ]];   then GPU_VENDOR=amd
+      elif [[ -d /sys/module/i915 || -d /sys/module/xe ]]; then GPU_VENDOR=intel
+      else GPU_VENDOR=unknown; fi
+      ;;
+  esac
+}
+
+detect_cpu_vendor() {
+  [[ -n "$CPU_VENDOR" ]] && return 0
+  local v
+  v="$(sed -n 's/^vendor_id[[:space:]]*:[[:space:]]*//p' /proc/cpuinfo 2>/dev/null | head -n1)"
+  case "$v" in
+    GenuineIntel) CPU_VENDOR=intel ;;
+    AuthenticAMD) CPU_VENDOR=amd ;;
+    *)            CPU_VENDOR=unknown ;;
+  esac
+}
+
+detect_gpu_vendor
+detect_cpu_vendor
+
+# NOTE on core isolation / SMT: deliberately NOT implemented. The Intel host
+# is an i5-9400F — 6 cores, 6 threads, no hyper-threading — so there are no
+# spare siblings to isolate and no SMT to toggle; taskset-pinning a game on it
+# only removes headroom. The AMD host has SMT but gains little for the risk.
+# ananicy-cpp + renice + gamemoded already cover scheduling priority.
 
 log() { printf '[game-mode] %s\n' "$*" >&2; }
 
@@ -26,7 +89,166 @@ notify() {
   have notify-send && notify-send -a "Game mode" -t "${2:-1500}" "$1" >/dev/null 2>&1 || true
 }
 
-hc() { hyprctl "$@" 2>/dev/null || true; }
+hc() { hyprctl "$@" >/dev/null 2>&1 || true; }
+
+# hyprctl exits 0 even when it rejects a keyword — it prints the parse error on
+# stdout and nothing else. So `hyprctl keyword ... || fallback` can never fire,
+# which is how a windowrule using a field name this Hyprland does not know
+# ("no_border") went unnoticed for so long. Check the output, not the status.
+hkw() {
+  local out
+  out="$(hyprctl keyword "$@" 2>&1)"
+  [[ "$out" == "ok" ]] && return 0
+  log "hyprctl keyword $1 rejected: $out"
+  return 1
+}
+
+# Verified against Hyprland 0.56.2 on this host — every field below is accepted
+# and every obvious alternative spelling is NOT:
+#   border_size (no_border/noborder/bordersize are all rejected)
+#   stay_focused (stayfocused is rejected)
+# There is also no `match:address` in 0.56, so a rule cannot name one window
+# directly; we tag the window and match the tag instead.
+GAME_TAG="${GAME_MODE_TAG:-gamemode}"
+GAME_WINDOW_RULE='stay_focused on, border_size 0, no_blur on, no_shadow on, no_anim on, no_dim on, no_max_size on, opacity 1 override, immediate on'
+
+# The secondary monitor is host-specific (cachy: DP-2 AOC, nix: DP-1), so it is
+# discovered at runtime instead of being hardcoded. Override with
+# GAME_MODE_SECONDARY_MONITOR.
+#
+# $1 = the game's window address (optional). It matters: the old version picked
+# "the monitor that is not focused", and computed that *before* cmd_on focused
+# the target window. `game-mode on ADDRESS` (which is exactly what `run` does)
+# therefore blanked whichever monitor happened not to have the cursor — the
+# game's own output, or the primary ultrawide. The monitor to keep is the one
+# the game window lives on; focus is only the fallback when there is no window.
+secondary_monitor() {
+  if [[ -n "${GAME_MODE_SECONDARY_MONITOR:-}" ]]; then
+    printf '%s\n' "$GAME_MODE_SECONDARY_MONITOR"
+    return 0
+  fi
+  have jq || return 0
+  local addr="${1:-}" keep=""
+  if [[ -n "$addr" && "$addr" != "none" ]]; then
+    # .monitor on a client is the monitor *id*, not its name.
+    keep="$(hyprctl clients -j 2>/dev/null \
+            | jq -r --arg a "$addr" '.[] | select(.address==$a) | .monitor' 2>/dev/null \
+            | head -n1 || true)"
+  fi
+  hyprctl monitors -j 2>/dev/null \
+    | jq -r --arg keep "$keep" '
+        [.[] | select(.disabled != true)] as $m
+        | ( ([$m[] | select((.id|tostring) == $keep)] | .[0].name)
+            // ([$m[] | select(.focused == true)]     | .[0].name) ) as $home
+        | if ($m | length) < 2 or $home == null then empty
+          else ([$m[] | select(.name != $home)] | .[0].name // empty)
+          end' 2>/dev/null || true
+}
+
+# ------------------------------------------------- background throttling ---
+# Renice + ionice everything that is not the game and not load-bearing, then put
+# it back. Deliberately NOT SIGSTOP: a stopped process can hold a lock, a dbus
+# reply or an audio buffer, and the failure mode is a hung desktop rather than a
+# slow one. Throttling is reversible and cannot deadlock anything.
+#
+# The protected list is the part to get right. Anything here keeps its priority:
+# the compositor, the shell drawing your bar, the audio chain, the session bus,
+# the polkit/keyring agents, and this script's own process tree.
+# Names are matched against `ps -o comm`, which truncates at 15 characters -
+# hence the clipped entries.
+THROTTLE_PROTECT='^(Hyprland|Xwayland|qs|quickshell|systemd|dbus-daemon|dbus-broker|pipewire|pipewire-pulse|wireplumber|easyeffects|xdg-desktop-por|xdg-document-po|xdg-permission-|gamemoded|gamescope|hypridle|hyprpaper|hyprlock|gnome-keyring-d|hyprpolkitagent|polkit-gnome-au|polkitd|sudo|ssh-agent|game-mode)$'
+THROTTLE_STATE="${XDG_RUNTIME_DIR:-/tmp}/hypr-game-mode.throttled"
+
+# Every pid in the game's process tree, so we never throttle the game itself.
+_game_tree_pids() {
+  local root="$1" out="$1" queue="$1" p kids
+  [[ -n "$root" && "$root" != "0" ]] || return 0
+  have pgrep || { echo "$root"; return 0; }
+  while [[ -n "$queue" ]]; do
+    local next=""
+    for p in $queue; do
+      kids="$(pgrep -P "$p" 2>/dev/null | tr '\n' ' ')"
+      [[ -n "$kids" ]] && { out="$out $kids"; next="$next $kids"; }
+    done
+    queue="$next"
+  done
+  echo "$out"
+}
+
+throttle_background() {
+  local mode="$1" game_pid="${2:-0}"
+
+  if [[ "$mode" == "off" ]]; then
+    [[ -f "$THROTTLE_STATE" ]] || return 0
+    local pid nice
+    while read -r pid nice; do
+      [[ "$pid" =~ ^[0-9]+$ ]] || continue
+      [[ "$nice" =~ ^-?[0-9]+$ ]] || continue
+      renice -n "$nice" -p "$pid" >/dev/null 2>&1 || true
+      have ionice && ionice -c 2 -n 4 -p "$pid" >/dev/null 2>&1 || true
+    done < "$THROTTLE_STATE"
+    rm -f -- "$THROTTLE_STATE" 2>/dev/null || true
+    return 0
+  fi
+
+  [[ "${GAME_MODE_THROTTLE:-1}" == 1 ]] || return 0
+  have ps || return 0
+
+  local skip
+  skip=" $(_game_tree_pids "$game_pid") $$ $PPID "
+  : > "$THROTTLE_STATE"
+
+  # Own processes only. Session leaders of the desktop are filtered by name.
+  # `ni` is read before `comm` because a comm may in principle contain spaces,
+  # and only the last field can safely absorb them.
+  local pid ni comm
+  while read -r pid ni comm; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ "$skip" == *" $pid "* ]] && continue
+    [[ "$comm" =~ $THROTTLE_PROTECT ]] && continue
+    # ps prints "-" instead of a number for anything that is not SCHED_OTHER /
+    # SCHED_BATCH (SCHED_RR, SCHED_FIFO, SCHED_IDLE). The arithmetic guard below
+    # cannot evaluate that: `(( ni < 0 ))` with ni="-" raises a syntax error,
+    # returns non-zero, and therefore does NOT skip the process — so it was
+    # throttled to 19 and recorded with a nice of "-", which the restore path
+    # could never renice back. Observed live: a running Wine prefix
+    # (services.exe, explorer.exe, ...) and chrome_crashpad left stuck at 19.
+    # Real-time and idle-class processes are the kernel's business anyway.
+    [[ "$ni" =~ ^-?[0-9]+$ ]] || continue
+    # Only touch the ordinary 0..9 band, and note WHY this is a hard rule
+    # rather than a preference: an unprivileged process can raise its nice
+    # value but never lower it again. Throttling anything negative is therefore
+    # a ONE-WAY trip - the restore below silently fails with EPERM and the
+    # process stays at 19 for the rest of its life. An earlier version of this
+    # function did exactly that to easyeffects (ananicy pins the audio chain at
+    # -12) and only a restart of the service brought it back. Anything at 10+
+    # is already out of the way and not worth touching.
+    (( ni < 0 || ni >= 10 )) && continue
+    printf '%s %s\n' "$pid" "$ni" >> "$THROTTLE_STATE"
+    renice -n 19 -p "$pid" >/dev/null 2>&1 || true
+    have ionice && ionice -c 3 -p "$pid" >/dev/null 2>&1 || true
+  done < <(ps -u "$(id -u)" -o pid=,ni=,comm= 2>/dev/null)
+
+  local n; n="$(wc -l < "$THROTTLE_STATE" 2>/dev/null || echo 0)"
+  log "throttled $n background processes"
+}
+
+# ------------------------------------------------------- keyboard layout ---
+# caps:swapescape is great for editing and wrong for games: you want Escape on
+# Escape. Cleared while the mode is on and put back from the value recorded in
+# the state file — the old `off` branch read the *current* value (which `on` had
+# just emptied) and wrote it back, so it was a no-op that only worked by
+# accident because `hc reload` runs right after it.
+kb_options_current() {
+  hyprctl getoption input:kb_options -j 2>/dev/null | jq -r '.str // ""' 2>/dev/null || true
+}
+
+kb_gaming() {
+  case "$1" in
+    on)  hc keyword input:kb_options "" ;;
+    off) hc keyword input:kb_options "$(state_get kb_options 2>/dev/null || true)" ;;
+  esac
+}
 
 # ---------------------------------------------------------------- state ---
 state_get() {
@@ -40,11 +262,29 @@ state_write() {
   ts="$(date +%s)"
   local prev_profile=""
   have powerprofilesctl && prev_profile="$(powerprofilesctl get 2>/dev/null || true)"
+  local prev_gov prev_scx sec prev_nice prev_kb prev_fs
+  prev_gov="$(cpu_governor_current)"
+  prev_scx="$(scx_current)"
+  sec="$(secondary_monitor "$1" || true)"
+  # The game's own nice and fullscreen state, so `off` restores what was there
+  # instead of guessing. ananicy-cpp pins games at -5 here; the old `off` set
+  # them to 0 and left them there.
+  prev_nice="$(nice_of_pid "$2")"
+  prev_kb="$(kb_options_current)"
+  prev_fs="$(fullscreen_of_address "$1")"
   cat >"$STATE_FILE" <<EOS
 address=$1
 pid=$2
 started=$ts
 profile=${prev_profile:-balanced}
+governor=${prev_gov:-}
+scx=${prev_scx:-none}
+secondary=${sec:-}
+game_nice=${prev_nice:-}
+kb_options=${prev_kb:-}
+fullscreen=${prev_fs:-}
+gpu_vendor=$GPU_VENDOR
+cpu_vendor=$CPU_VENDOR
 single_monitor=$SINGLE_MONITOR
 shell_config=$SHELL_CFG
 EOS
@@ -80,23 +320,69 @@ shell_ipc() {
   qs -c "$SHELL_CFG" ipc call shell setGameMode "$v" >/dev/null 2>&1 || true
 }
 
+nice_of_pid() {
+  # Reads /proc rather than `ps -o ni=`, which prints "-" for anything that is
+  # not SCHED_OTHER/SCHED_BATCH. Field 19 of /proc/PID/stat is the nice value.
+  local pid="${1:-}"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  awk '{print $19}' "/proc/$pid/stat" 2>/dev/null || true
+}
+
+fullscreen_of_address() {
+  local a="${1:-}"
+  [[ -n "$a" && "$a" != "none" ]] || return 0
+  have jq || return 0
+  hyprctl clients -j 2>/dev/null \
+    | jq -r --arg a "$a" '.[] | select(.address==$a) | "\(.fullscreen) \(.fullscreenClient)"' 2>/dev/null | head -n1 || true
+}
+
+# The lowest nice an unprivileged process may ask for is 20 - RLIMIT_NICE. On
+# this host RLIMIT_NICE is 31, so -15 is refused outright and -11 is the floor;
+# without the clamp `renice -n -15` failed with EPERM and the game kept whatever
+# nice it already had while the log claimed success.
+nice_floor() {
+  local lim
+  lim="$(ulimit -e 2>/dev/null || echo 0)"
+  [[ "$lim" == "unlimited" ]] && { echo -20; return 0; }
+  [[ "$lim" =~ ^[0-9]+$ ]] || lim=0
+  echo $(( 20 - lim ))
+}
+
 set_nice() {
-  # $1 = pid, $2 = nice value
+  # $1 = pid, $2 = nice value. Applied to the process tree (wine/proton spawn
+  # helpers); `restore_nice` deliberately only touches the recorded root.
   local pid="$1" val="$2"
   [[ -n "$pid" && "$pid" != "0" && "$pid" != "null" ]] || return 0
   kill -0 "$pid" 2>/dev/null || return 0
-  if have sudo && sudo -n true >/dev/null 2>&1; then
-    sudo -n renice -n "$val" -p "$pid" >/dev/null 2>&1 || renice -n "$val" -p "$pid" >/dev/null 2>&1 || true
-  else
-    renice -n "$val" -p "$pid" >/dev/null 2>&1 || true
-  fi
-  # Also apply to the whole process tree (wine/proton spawn helpers).
+  local floor; floor="$(nice_floor)"
+  (( val < floor )) && val="$floor"
+  # `|| true` is load bearing under `set -o pipefail`: pgrep exits 1 when the
+  # process has no children, which would otherwise abort the whole script here
+  # and skip everything cmd_on does after set_nice.
+  local targets="$pid"
   if have pgrep; then
-    local child
-    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
-      renice -n "$val" -p "$child" >/dev/null 2>&1 || true
-    done
+    targets="$targets $(pgrep -P "$pid" 2>/dev/null || true)"
   fi
+  local p
+  for p in $targets; do
+    if have sudo && sudo -n true >/dev/null 2>&1; then
+      sudo -n renice -n "$val" -p "$p" >/dev/null 2>&1 || renice -n "$val" -p "$p" >/dev/null 2>&1 || true
+    else
+      renice -n "$val" -p "$p" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
+restore_nice() {
+  # $1 = pid, $2 = the nice recorded before we touched it. No recorded value
+  # means we never changed anything, so do nothing — the old code renice'd the
+  # game to 0 unconditionally and threw away ananicy's -5 every time you left
+  # game mode.
+  local pid="${1:-}" val="${2:-}"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  [[ "$val" =~ ^-?[0-9]+$ ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  renice -n "$val" -p "$pid" >/dev/null 2>&1 || true
 }
 
 set_ionice() {
@@ -111,8 +397,16 @@ gamemode_dbus() {
   local pid="$2"
   [[ -n "$pid" && "$pid" != "0" && "$pid" != "null" ]] || return 0
   have dbus-send || return 0
-  pgrep -x gamemoded >/dev/null 2>&1 || return 0
-  dbus-send --session --print-reply --dest=com.feralinteractive.GameMode \
+  # gamemoded is a D-Bus-activated user service: after a fresh boot it is not
+  # running yet, and the old `pgrep -x gamemoded || return` therefore skipped
+  # registration for the entire session. Accept the activation file too and let
+  # the call start the daemon — with a short reply timeout so a missing or
+  # broken service cannot stall the toggle.
+  pgrep -x gamemoded >/dev/null 2>&1 \
+    || [[ -e /usr/share/dbus-1/services/com.feralinteractive.GameMode.service ]] \
+    || return 0
+  dbus-send --session --reply-timeout=2000 --print-reply \
+    --dest=com.feralinteractive.GameMode \
     /com/feralinteractive/GameMode "com.feralinteractive.GameMode.$1" \
     "int32:$pid" "int32:$pid" >/dev/null 2>&1 || true
 }
@@ -120,6 +414,144 @@ gamemode_dbus() {
 power_profile() {
   have powerprofilesctl || return 0
   powerprofilesctl set "$1" >/dev/null 2>&1 || true
+}
+
+# ------------------------------------------------------------------ cpu ---
+# Vendor-neutral governor handling. amd_pstate and intel_pstate/acpi-cpufreq
+# all expose scaling_governor, so nothing here is vendor-specific — we only
+# differ in *how* we try to set it, cheapest and least privileged first.
+cpu_governor_current() {
+  cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
+}
+
+cpu_governor_supported() {
+  # $1 = governor name
+  local avail
+  avail="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null || true)"
+  [[ -z "$avail" ]] && return 1
+  [[ " $avail " == *" $1 "* ]]
+}
+
+# Best effort, quiet on failure: cpupower -> direct sysfs (only with
+# passwordless sudo) -> powerprofilesctl. Never fails the script.
+set_cpu_governor() {
+  local gov="$1"
+  [[ -n "$gov" ]] || return 0
+  cpu_governor_supported "$gov" || return 0
+  [[ "$(cpu_governor_current)" == "$gov" ]] && return 0
+
+  if have cpupower && have sudo && sudo -n true >/dev/null 2>&1; then
+    sudo -n cpupower frequency-set -g "$gov" >/dev/null 2>&1 && return 0
+  fi
+  if have sudo && sudo -n true >/dev/null 2>&1; then
+    sudo -n sh -c "for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+                     printf '%s' '$gov' > \"\$f\" 2>/dev/null || true; done" >/dev/null 2>&1 && return 0
+  fi
+  # Last resort: let power-profiles-daemon pick a governor for us. It maps
+  # performance/balanced/power-saver onto the same knob without root.
+  if have powerprofilesctl; then
+    case "$gov" in
+      performance) powerprofilesctl set performance >/dev/null 2>&1 || true ;;
+      powersave)   powerprofilesctl set power-saver >/dev/null 2>&1 || true ;;
+    esac
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------------ gpu ---
+# All of this is optional and failure-tolerant; a missing tool is not an error.
+gpu_perf() {
+  # $1 = on|off
+  case "$GPU_VENDOR" in
+    amd)
+      # AMD only: the amdgpu power DPM knob. Needs root; skipped otherwise.
+      local card level
+      [[ "$1" == "on" ]] && level=high || level=auto
+      if have sudo && sudo -n true >/dev/null 2>&1; then
+        for card in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
+          [[ -e "$card" ]] || continue
+          sudo -n sh -c "printf '%s' '$level' > '$card'" >/dev/null 2>&1 || true
+        done
+      fi
+      ;;
+    nvidia)
+      # PowerMizer: 1 = prefer maximum performance, 0 = adaptive (the default).
+      # nvidia-settings talks to an X server, so under a pure Wayland session
+      # with no XWayland DISPLAY this silently no-ops. That is fine — it is a
+      # bonus, not a requirement. No overclocking, no fan curves, no
+      # persistence-mode changes are attempted anywhere in this script.
+      have nvidia-settings || return 0
+      [[ -n "${DISPLAY:-}" ]] || return 0
+      local mode
+      [[ "$1" == "on" ]] && mode=1 || mode=0
+      nvidia-settings -a "[gpu:0]/GPUPowerMizerMode=$mode" >/dev/null 2>&1 || true
+      ;;
+    *) : ;;
+  esac
+  return 0
+}
+
+gpu_status_line() {
+  case "$GPU_VENDOR" in
+    nvidia)
+      have nvidia-smi || return 0
+      nvidia-smi --query-gpu=name,utilization.gpu,temperature.gpu \
+        --format=csv,noheader 2>/dev/null || true
+      ;;
+    amd)
+      local f
+      for f in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
+        [[ -e "$f" ]] || continue
+        printf 'amdgpu dpm level: %s\n' "$(cat "$f" 2>/dev/null || echo '?')"
+        break
+      done
+      ;;
+    *) : ;;
+  esac
+  return 0
+}
+
+# ------------------------------------------------------------- sched_ext ---
+# OFF BY DEFAULT. scx_loader's dbus methods are polkit-protected, so starting or
+# stopping a scheduler pops a password dialog and game-mode then BLOCKS on it -
+# which is the opposite of what a "make the game fast now" toggle should do.
+# Enable deliberately with GAME_MODE_SCX=1 after installing a polkit rule that
+# lets your user manage sched-ext without a prompt.
+# Entirely optional. scxctl is a dbus client for scx_loader; if the service is
+# not running, or scx-scheds is not installed, every call here is a quiet no-op.
+# Verified against scxctl 1.0 on this host:
+#   scxctl start --sched lavd --mode gaming
+#   scxctl stop
+#   scxctl get      -> "no scx scheduler running" when idle
+scx_current() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_current" == scx_current ]] && echo none; return 0; }
+  have scxctl || return 0
+  local out
+  out="$(timeout 3 scxctl get 2>/dev/null || true)"
+  [[ "$out" == *"no scx scheduler running"* ]] && { echo none; return 0; }
+  [[ -n "$out" ]] && printf '%s\n' "$out" | head -n1 || echo none
+}
+
+scx_start() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_start" == scx_current ]] && echo none; return 0; }
+  have scxctl || return 0
+  [[ -n "$SCX_SCHED" ]] || return 0
+  [[ -d /sys/kernel/sched_ext ]] || return 0
+  # Do not stomp a scheduler the user started on purpose.
+  [[ "$(state_get scx 2>/dev/null || echo none)" == "none" ]] || return 0
+  timeout 5 scxctl start --sched "$SCX_SCHED" --mode "$SCX_MODE" >/dev/null 2>&1 \
+    || timeout 5 scxctl start --sched "$SCX_SCHED" >/dev/null 2>&1 \
+    || true
+  return 0
+}
+
+scx_stop() {
+  [[ "${GAME_MODE_SCX:-0}" == 1 ]] || { [[ "scx_stop" == scx_current ]] && echo none; return 0; }
+  have scxctl || return 0
+  # Only stop it if we were the ones who started it.
+  [[ "$(state_get scx 2>/dev/null || echo none)" == "none" ]] || return 0
+  timeout 5 scxctl stop >/dev/null 2>&1 || true
+  return 0
 }
 
 pause_background() {
@@ -144,19 +576,61 @@ resume_background() {
   fi
 }
 
+window_exists() {
+  local a="${1:-}"
+  [[ -n "$a" && "$a" != "none" ]] || return 1
+  have jq || return 1
+  hyprctl clients -j 2>/dev/null | jq -e --arg a "$a" 'any(.[]; .address==$a)' >/dev/null 2>&1
+}
+
 apply_window_rules() {
   # $1 = address (0x...)
   local a="$1"
-  [[ -n "$a" ]] || return 0
+  if ! window_exists "$a"; then
+    log "no window at address ${a:-none}; leaving window state alone"
+    return 0
+  fi
   hc dispatch focuswindow "address:$a"
-  hc dispatch setfloating off "address:$a" 2>/dev/null || hc dispatch settiled "address:$a"
+  hc dispatch settiled "address:$a"
+  # Register the rule *before* tagging: tagging re-evaluates a window's dynamic
+  # rules, so the tag is what makes the rule take on an already-mapped window.
+  hkw windowrule "$GAME_WINDOW_RULE, match:tag $GAME_TAG" || true
+  hc dispatch tagwindow "+$GAME_TAG" "address:$a"
+  # setprop is the only thing that reaches an existing window directly; `lock`
+  # stops a later dynamic rule from overriding it. Only these four prop names
+  # exist in 0.56 — forcenoblur/forcenoborder/alpha/stayfocused are all
+  # rejected, which is why the rule above still has to carry the rest.
+  local p
+  for p in "immediate 1" "rounding 0" "decorate 0" "opaque 1"; do
+    # shellcheck disable=SC2086
+    hc dispatch setprop "address:$a" $p lock
+  done
   # Real fullscreen and tell the client it is fullscreen (Hyprland >= 0.42).
+  # fullscreenstate silently IGNORES a window argument and always acts on the
+  # focused window (verified: `fullscreenstate 2 2 address:0xdeadbeef` returns
+  # "ok" and fullscreens whatever had focus). So only fire it once the intended
+  # window really is the focused one.
+  [[ "$(active_address)" == "$a" ]] || return 0
   hc dispatch fullscreenstate 2 2
-  # Temporary, address-scoped rules (Hyprland 0.55 syntax). Try both the
-  # documented and the legacy spelling of the focus lock.
-  hyprctl keyword windowrule "stay_focused on, no_border on, immediate on, opacity 1 override, no_blur on, no_shadow on, no_anim on, no_dim on, match:address $a" >/dev/null 2>&1 \
-    || hyprctl keyword windowrule "stayfocused on, no_border on, immediate on, opacity 1 override, match:address $a" >/dev/null 2>&1 \
-    || true
+}
+
+clear_window_rules() {
+  # $1 = address, $2 = "fs fsc" recorded before we touched it
+  local a="${1:-}" fs="${2:-}"
+  [[ -n "$a" && "$a" != "none" ]] || return 0
+  # A leading "-" is eaten by hyprctl as a flag unless it is protected by "--".
+  hc dispatch tagwindow -- "-$GAME_TAG" "address:$a"
+  local p
+  for p in immediate rounding decorate opaque; do
+    hc dispatch setprop "address:$a" "$p" unset
+  done
+  # Only put fullscreen back if this window is still the focused one:
+  # fullscreenstate has no way to name a window, so acting blind would toggle
+  # whatever the user has since switched to.
+  [[ "$fs" =~ ^[0-9]+\ [0-9]+$ ]] || return 0
+  [[ "$(active_address)" == "$a" ]] || return 0
+  # shellcheck disable=SC2086
+  hc dispatch fullscreenstate $fs
 }
 
 apply_compositor_keywords() {
@@ -174,13 +648,30 @@ keyword general:border_size 0; \
 keyword general:allow_tearing 1; \
 keyword render:direct_scanout 2; \
 keyword misc:focus_on_activate 0; \
-keyword input:follow_mouse 2" >/dev/null 2>&1 || true
+keyword input:follow_mouse 2; \
+keyword misc:mouse_move_enables_dpms 0; \
+keyword misc:key_press_enables_dpms 0" >/dev/null 2>&1 || true
 }
+# The last two are what make blanking the secondary monitor actually work.
+# hypr/hyprland/general.conf sets both to true so any keypress wakes the screen
+# from hypridle, but Hyprland's flag is global: `dispatch dpms off DP-2` marks
+# the whole session as DPMS-off, and the very next key or mouse event turns
+# *every* output back on. Measured on this host: the monitor came back within
+# 50 ms of the first input, i.e. instantly while playing. Clearing both for the
+# duration keeps the panel off; `hc reload` in cmd_off restores them from the
+# config, so there is nothing to remember.
 
 secondary_dpms() {
-  # $1 = on|off
-  [[ "$SINGLE_MONITOR" == "1" ]] || return 0
-  hc dispatch dpms "$1" "$SECONDARY_MONITOR"
+  # $1 = on|off. Blanking is opt-out (--all-monitors); *re-enabling* is
+  # unconditional. SINGLE_MONITOR is re-read from the state file on the way out,
+  # and a missing or empty key used to leave the panel dark forever because this
+  # guard ran for "on" too.
+  local mon
+  [[ "$1" == "on" || "$SINGLE_MONITOR" == "1" ]] || return 0
+  mon="$(state_get secondary 2>/dev/null || true)"
+  [[ -n "$mon" ]] || mon="$(secondary_monitor "$(state_get address 2>/dev/null || true)" || true)"
+  [[ -n "$mon" ]] || return 0
+  hc dispatch dpms "$1" "$mon"
 }
 
 # ------------------------------------------------------------- commands ---
@@ -189,6 +680,7 @@ cmd_on() {
   for arg in "$@"; do
     case "$arg" in
       --single-monitor) SINGLE_MONITOR=1 ;;
+      --all-monitors)   SINGLE_MONITOR=0 ;;
       0x*) addr="$arg" ;;
       address:*) addr="${arg#address:}" ;;
       *) ;;
@@ -210,44 +702,71 @@ cmd_on() {
   shell_ipc on
   apply_window_rules "$addr"
 
-  set_nice "$pid" -10
+  # The focused window is *the* process on this machine while the mode is on:
+  # the lowest nice sudo will grant, best-effort I/O at top priority, and the
+  # rest of the session pushed to 19. -15 rather than -20 leaves the kernel's
+  # own threads above it.
+  set_nice "$pid" "${GAME_MODE_NICE:--15}"
   set_ionice "$pid"
+  throttle_background on "$pid"
+  kb_gaming on
   gamemode_dbus RegisterGameByPID "$pid"
 
   pause_background
   secondary_dpms off
   power_profile performance
+  set_cpu_governor performance
+  gpu_perf on
+  scx_start
 
-  log "on (window ${addr:-none}, pid ${pid:-?})"
+  log "on (window ${addr:-none}, pid ${pid:-?}, gpu $GPU_VENDOR, cpu $CPU_VENDOR)"
   notify "Game mode on"
 }
 
 cmd_off() {
   if ! is_on; then
-    # Still make sure the compositor is in a sane state.
+    # Still make sure the compositor is in a sane state, and clear anything a
+    # half-finished `on` may have left behind: a throttle list nobody owns would
+    # otherwise be replayed (or worse, never replayed) by the next run.
+    throttle_background off
+    rm -f -- "$_confirm_file" 2>/dev/null || true
     hc reload
     shell_ipc off
     return 0
   fi
 
-  local addr pid profile
+  local addr pid profile governor game_nice fs
   addr="$(state_get address || true)"
   pid="$(state_get pid || true)"
   profile="$(state_get profile || true)"
-  SINGLE_MONITOR="$(state_get single_monitor || echo 0)"
+  governor="$(state_get governor || true)"
+  game_nice="$(state_get game_nice || true)"
+  fs="$(state_get fullscreen || true)"
+  SINGLE_MONITOR="$(state_get single_monitor || true)"
+  # Vendor is re-read from the state file so an `off` still does the right
+  # thing if the file was written by a differently-detected run.
+  GPU_VENDOR="$(state_get gpu_vendor || true)"; [[ -n "$GPU_VENDOR" ]] || detect_gpu_vendor
+  CPU_VENDOR="$(state_get cpu_vendor || true)"; [[ -n "$CPU_VENDOR" ]] || detect_cpu_vendor
 
-  # Try to drop the temporary rule first; a reload also wipes runtime keywords.
-  if [[ -n "$addr" && "$addr" != "none" ]]; then
-    hyprctl keyword windowrule "unset, match:address $addr" >/dev/null 2>&1 || true
-    hc dispatch fullscreenstate 0 0 "address:$addr" 2>/dev/null || true
-  fi
+  # Untag the window and drop its props; `hc reload` right after also wipes the
+  # runtime windowrule, so the rule itself needs no explicit removal (there is
+  # no `unset` windowrule field in 0.56 — the old call was rejected silently).
+  clear_window_rules "$addr" "$fs"
+  throttle_background off
+  kb_gaming off
   hc reload
 
   shell_ipc off
-  set_nice "$pid" 0
+  restore_nice "$pid" "$game_nice"
   gamemode_dbus UnregisterGameByPID "$pid"
 
   secondary_dpms on
+  gpu_perf off
+  scx_stop
+  # Restore the governor we recorded on `on`; never guess. If nothing was
+  # recorded (or it was already performance) this is a no-op, so we can never
+  # leave the CPU pinned to performance because a restore guessed wrong.
+  if [[ -n "$governor" ]]; then set_cpu_governor "$governor"; fi
   power_profile "${profile:-balanced}"
   resume_background
 
@@ -260,15 +779,58 @@ cmd_status() {
   local quiet=0
   [[ "${1:-}" == "-q" ]] && quiet=1
   if is_on; then
-    [[ $quiet -eq 1 ]] || { echo "on"; cat "$STATE_FILE"; }
+    if [[ $quiet -ne 1 ]]; then
+      echo "on"
+      cat "$STATE_FILE"
+      echo "governor_now=$(cpu_governor_current)"
+      echo "scx_now=$(scx_current)"
+      local g
+      g="$(gpu_status_line || true)"
+      if [[ -n "$g" ]]; then echo "gpu=$g"; fi
+    fi
     return 0
   fi
-  [[ $quiet -eq 1 ]] || echo "off"
+  if [[ $quiet -ne 1 ]]; then
+    echo "off"
+    echo "gpu_vendor=$GPU_VENDOR cpu_vendor=$CPU_VENDOR"
+    local g
+    g="$(gpu_status_line || true)"
+    [[ -n "$g" ]] && echo "gpu=$g"
+  fi
   return 1
 }
 
+# Leaving needs a deliberate second press. Dropping out of game mode mid-match
+# because Super+G was brushed is worse than the extra keystroke; a password
+# prompt would be worse still, so this is a plain confirm with a short window.
+GAME_MODE_CONFIRM_SECONDS="${GAME_MODE_CONFIRM_SECONDS:-5}"
+_confirm_file="${XDG_RUNTIME_DIR:-/tmp}/hypr-game-mode.leaving"
+
 cmd_toggle() {
-  if is_on; then cmd_off; else cmd_on "$@"; fi
+  if ! is_on; then
+    rm -f -- "$_confirm_file" 2>/dev/null || true
+    cmd_on "$@"
+    return
+  fi
+
+  local now stamp
+  now="$(date +%s)"
+  stamp="$(cat -- "$_confirm_file" 2>/dev/null || echo 0)"
+  [[ "$stamp" =~ ^[0-9]+$ ]] || stamp=0
+
+  if (( now - stamp <= GAME_MODE_CONFIRM_SECONDS )); then
+    rm -f -- "$_confirm_file" 2>/dev/null || true
+    cmd_off
+    return
+  fi
+
+  echo "$now" > "$_confirm_file"
+  if have notify-send; then
+    notify-send -a game-mode -u critical -t $(( GAME_MODE_CONFIRM_SECONDS * 1000 )) \
+      "Still in game mode" \
+      "Press Super+G again within ${GAME_MODE_CONFIRM_SECONDS}s to leave."
+  fi
+  echo "confirm-required"
 }
 
 # Return the address of a window whose pid is $1 or a descendant of $1.
@@ -298,6 +860,7 @@ cmd_run() {
     case "$1" in
       --exclusive) exclusive=1; shift ;;
       --single-monitor) SINGLE_MONITOR=1; shift ;;
+      --all-monitors)   SINGLE_MONITOR=0; shift ;;
       --) shift; break ;;
       -*) log "unknown flag $1"; shift ;;
       *) break ;;
@@ -307,14 +870,33 @@ cmd_run() {
 
   local -a cmd=("$@")
   if [[ $exclusive -eq 1 ]] && have gamescope; then
-    cmd=(gamescope -W 2560 -H 1440 -r 144 -f --immediate-flips --force-grab-cursor -- "${cmd[@]}")
+    # Geometry follows the focused monitor instead of a hardcoded 2560x1440@144
+    # (that was the other host's HDMI-A-1). Env vars override; jq missing or a
+    # headless run just falls back to gamescope's own defaults.
+    local gw="$GAMESCOPE_W" gh="$GAMESCOPE_H" gr="$GAMESCOPE_R"
+    if [[ -z "$gw" || -z "$gh" || -z "$gr" ]] && have jq; then
+      local geo
+      geo="$(hyprctl monitors -j 2>/dev/null \
+             | jq -r '([.[] | select(.focused == true)] + [.[]] | .[0])
+                      | "\(.width) \(.height) \(.refreshRate | floor)"' 2>/dev/null || true)"
+      if [[ "$geo" =~ ^[0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+        read -r gw gh gr <<<"$geo"
+      fi
+    fi
+    local -a gs=(gamescope)
+    if [[ -n "$gw" && -n "$gh" ]]; then gs+=(-W "$gw" -H "$gh"); fi
+    if [[ -n "$gr" ]]; then gs+=(-r "$gr"); fi
+    gs+=(-f --immediate-flips --force-grab-cursor --)
+    cmd=("${gs[@]}" "${cmd[@]}")
   fi
   if have gamemoderun; then
     cmd=(gamemoderun "${cmd[@]}")
   fi
 
+  # Pass the choice on explicitly in both directions: cmd_on defaults to
+  # single-monitor, so an omitted flag silently undid `run --all-monitors`.
   local extra=()
-  [[ "$SINGLE_MONITOR" == "1" ]] && extra+=(--single-monitor)
+  if [[ "$SINGLE_MONITOR" == "1" ]]; then extra+=(--single-monitor); else extra+=(--all-monitors); fi
 
   # Always restore on exit, even if we die.
   trap 'cmd_off >/dev/null 2>&1 || true' EXIT INT TERM HUP
@@ -337,8 +919,10 @@ cmd_run() {
       log "no window found for pid $child after 60 s; using focused window"
       cmd_on "${extra[@]}"
     fi
-    wait "$child" || true
   fi
+  # Reap it either way: the loop above also exits when the command dies before
+  # it ever mapped a window, and that path used to leave a zombie behind.
+  wait "$child" 2>/dev/null || true
   cmd_off
   trap - EXIT INT TERM HUP
 }

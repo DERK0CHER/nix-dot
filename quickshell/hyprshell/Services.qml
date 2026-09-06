@@ -25,6 +25,19 @@ Scope {
     // gammastep running
     property bool nightLight: false
 
+    // GPU: vendor-aware, probed once per shell in Host.qml (singleton), not
+    // once per Services instance. AMD reads amdgpu sysfs, NVIDIA shells out to
+    // nvidia-smi, Intel has no readout. gpuAvailable is the only gate the UI
+    // needs: when the vendor tool is missing the whole readout disappears
+    // instead of showing zeros.
+    readonly property string gpuVendor: Host.gpuVendor
+    readonly property bool gpuAvailable: Host.gpuAvailable
+    readonly property int gpuUtil: Host.gpuUtil
+    readonly property int gpuTemp: Host.gpuTemp
+    readonly property int gpuMemUsed: Host.gpuMemUsed
+    readonly property int gpuMemTotal: Host.gpuMemTotal
+    readonly property int gpuMemPercent: Host.gpuMemPercent
+
     // audio (Pipewire)
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property real volume: (sink && sink.audio) ? sink.audio.volume : 0
@@ -112,7 +125,9 @@ Scope {
     }
 
     function parseBrightness(t) {
-        // amdgpu_bl1,backlight,255,100%,255
+        // "<device>,backlight,255,100%,255" - device name is vendor specific
+        // (amdgpu_bl1, nvidia_wmi_ec_backlight, intel_backlight, ...). A desktop
+        // usually has no backlight device at all -> empty output -> -1.
         const p = t.trim().split(",")
         if (p.length >= 4) {
             const v = parseInt(p[3].replace("%", ""))
@@ -165,8 +180,18 @@ Scope {
     function toggleGameMode() {
         Quickshell.execDetached(["sh", "-c", "\"$HOME/.config/hypr/scripts/game-mode\" toggle"])
     }
+    // Try the settings apps in order of how well they match the shell's look, and
+    // say so instead of doing nothing when none of them is installed - a dead
+    // button that fails silently is worse than an error.
     function openSettings() {
-        Quickshell.execDetached(["sh", "-c", "XDG_CURRENT_DESKTOP=gnome gnome-control-center >/dev/null 2>&1 &"])
+        Quickshell.execDetached(["sh", "-c",
+            "for c in gnome-control-center systemsettings xfce4-settings-manager; do " +
+            "  if command -v \"$c\" >/dev/null 2>&1; then " +
+            "    XDG_CURRENT_DESKTOP=gnome \"$c\" >/dev/null 2>&1 & exit 0; " +
+            "  fi; " +
+            "done; " +
+            "notify-send -a hyprshell 'No settings app installed' " +
+            "'Install gnome-control-center to use this button.'"])
     }
     function lock()     { Quickshell.execDetached(["loginctl", "lock-session"]) }
     function suspend()  { Quickshell.execDetached(["systemctl", "suspend"]) }

@@ -13,46 +13,109 @@ ShellRoot {
 
     // Written by the panels agent (same directory).
     QuickSettings {}
+    CommandPalette {}
     NotificationCenter {}
     NotificationPopups {}
     Osd {}
+    Switcher {}
 
     // qs -c hyprshell ipc call shell <function> [args]
     IpcHandler {
         target: "shell"
 
         function toggleQuickSettings(): void {
-            const next = !State.quickSettingsOpen;
-            State.closePanels();
-            State.quickSettingsOpen = next;
+            const next = !ShellState.quickSettingsOpen;
+            ShellState.closePanels();
+            ShellState.quickSettingsOpen = next;
+        }
+
+        function togglePalette(): void {
+            const next = !ShellState.paletteOpen;
+            ShellState.closePanels();
+            ShellState.paletteOpen = next;
         }
 
         function toggleNotifications(): void {
-            const next = !State.notificationsOpen;
-            State.closePanels();
-            State.notificationsOpen = next;
+            const next = !ShellState.notificationsOpen;
+            ShellState.closePanels();
+            ShellState.notificationsOpen = next;
         }
 
         function toggleAppMenu(): void {
-            const next = !State.appMenuOpen;
-            State.closePanels();
-            State.appMenuOpen = next;
+            const next = !ShellState.appMenuOpen;
+            ShellState.closePanels();
+            ShellState.appMenuOpen = next;
         }
 
         function toggleBar(): void {
-            State.barVisible = !State.barVisible;
+            ShellState.barVisible = !ShellState.barVisible;
         }
 
         function setGameMode(on: bool): void {
-            State.gameMode = on;
-            State.barVisible = !on;
-            State.doNotDisturb = on;
-            State.closePanels();
+            ShellState.gameMode = on;
+            ShellState.barVisible = !on;
+            ShellState.doNotDisturb = on;
+            ShellState.closePanels();
         }
 
         function toggleLauncher(): void {
-            State.closePanels();
+            ShellState.closePanels();
             Quickshell.execDetached(["sh", "-c", "pkill -x wofi || wofi --show drun"]);
+        }
+    }
+
+    // qs -c hyprshell ipc call switcher <next|prev|commit|cancel>
+    // Driven entirely by the `switcher` submap in keybinds.conf: Hyprland
+    // consumes its own binds before any surface sees them, so a held-Alt
+    // switcher cannot be built out of QML key handlers.
+    IpcHandler {
+        target: "switcher"
+
+        // Game mode blocks the switcher outright. Two reasons, and the second
+        // is the one that matters: an overlay is a layer surface above the
+        // game, and any surface above a fullscreen window stops Hyprland from
+        // handing the buffer straight to the display - direct scanout, the
+        // Wayland equivalent of exclusive fullscreen. Opening the switcher
+        // would silently cost a frame of latency in the middle of a match.
+        function next(): void {
+            if (ShellState.gameMode)
+                return;
+            ShellState.switcherStep(1);
+        }
+
+        function prev(): void {
+            if (ShellState.gameMode)
+                return;
+            ShellState.switcherStep(-1);
+        }
+
+        function commit(): void {
+            if (!ShellState.switcherOpen)
+                return;
+            ShellState.switcherCommit();
+            ShellState.switcherOpen = false;
+        }
+
+        function cancel(): void {
+            ShellState.switcherOpen = false;
+        }
+
+        // Alt+Q while the overlay is up. Bound globally like the others, so it
+        // must be a no-op when the switcher is closed - otherwise Alt+Q would
+        // silently close windows at any time.
+        function close(): void {
+            if (!ShellState.switcherOpen)
+                return;
+            ShellState.switcherClose();
+        }
+
+        // Alt+1..0 while the overlay is up. Same no-op-when-closed rule as
+        // close(): these are global binds, and silently relocating windows
+        // outside the switcher would be worse than useless.
+        function moveTo(ws: string): void {
+            if (!ShellState.switcherOpen)
+                return;
+            ShellState.switcherMove(ws);
         }
     }
 }

@@ -2,8 +2,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 
-// GNOME-esque workspace dots: active = accent pill, others = dim dots.
-// Numbers only appear while hovered.
+// GNOME-esque workspace dots: active = accent pill carrying its number,
+// others = dim dots. Hovering reveals the numbers of the inactive ones too.
+// The active number is always shown: a pill without it tells you the position
+// but not which workspace you are actually on, which is the one thing the
+// indicator exists to answer.
 Item {
     id: root
 
@@ -49,7 +52,7 @@ Item {
 
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.hovered ? 20 : (isActive ? 20 : 6)
-                height: root.hovered ? 16 : 6
+                height: (root.hovered || isActive) ? 16 : 6
                 radius: height / 2
                 color: isActive ? Theme.accent : (modelData.urgent ? Theme.danger : Theme.fgDim)
 
@@ -59,7 +62,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    visible: root.hovered
+                    visible: root.hovered || dot.isActive
                     text: dot.modelData.id
                     font.family: Theme.font
                     font.pixelSize: Theme.fontSizeSmall

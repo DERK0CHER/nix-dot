@@ -1,0 +1,108 @@
+{
+  "_comment": [
+    "Label and grouping table for GNOME Files (Nautilus), a GTK4/libadwaita",
+    "app that exports org.gtk.Actions but no menu model at all.",
+    "",
+    "File name: labels/<the app's well-known DBus bus name>.json.",
+    "Three optional keys, all of them plain data:",
+    "  menus  - the menu bar, in order. Each entry is {label, items}; an item",
+    "           is an action name ('app.new-window'), '-' for a separator, or",
+    "           'action=value' to pass a string target. The 'app.'/'win.'",
+    "           prefix may be dropped when it is unambiguous.",
+    "  labels - action name -> the text to show. Same key forms as items.",
+    "  hide   - actions to leave out of the menu entirely.",
+    "Anything the app exports but this file does not mention still appears,",
+    "grouped by the built-in heuristic, so a partial table is fine."
+  ],
+
+  "menus": [
+    {
+      "label": "File",
+      "items": [
+        "app.new-window",
+        "win.new-tab",
+        "app.clone-window",
+        "-",
+        "win.close-current-view",
+        "-",
+        "app.quit"
+      ]
+    },
+    {
+      "label": "Edit",
+      "items": [
+        "win.undo",
+        "win.redo",
+        "-",
+        "app.preferences",
+        "app.search-settings"
+      ]
+    },
+    {
+      "label": "View",
+      "items": [
+        "win.toggle-sidebar",
+        "win.current-location-menu",
+        "-",
+        "app.show-file-transfers"
+      ]
+    },
+    {
+      "label": "Go",
+      "items": [
+        "win.go-home"
+      ]
+    },
+    {
+      "label": "Tabs",
+      "items": [
+        "win.restore-tab",
+        "-",
+        "win.tab-move-left",
+        "win.tab-move-right",
+        "win.tab-move-new-window",
+        "-",
+        "win.close-other-tabs"
+      ]
+    },
+    {
+      "label": "Help",
+      "items": [
+        "app.shortcuts",
+        "app.help",
+        "-",
+        "app.about"
+      ]
+    }
+  ],
+
+  "labels": {
+    "app.about": "About Files",
+    "app.clone-window": "Duplicate Window",
+    "app.help": "Files Help",
+    "app.kill": "Force Quit",
+    "app.new-window": "New Window",
+    "app.preferences": "Preferences",
+    "app.quit": "Quit",
+    "app.search-settings": "Search Settings",
+    "app.shortcuts": "Keyboard Shortcuts",
+    "app.show-file-transfers": "File Transfers",
+    "win.close-current-view": "Close Tab",
+    "win.close-other-tabs": "Close Other Tabs",
+    "win.current-location-menu": "Current Location",
+    "win.go-home": "Home",
+    "win.new-tab": "New Tab",
+    "win.redo": "Redo",
+    "win.restore-tab": "Reopen Closed Tab",
+    "win.tab-move-left": "Move Tab Left",
+    "win.tab-move-new-window": "Move Tab to New Window",
+    "win.tab-move-right": "Move Tab Right",
+    "win.toggle-sidebar": "Show Sidebar",
+    "win.undo": "Undo"
+  },
+
+  "hide": [
+    "app.kill",
+    "win.go-to-tab"
+  ]
+}

@@ -46,11 +46,11 @@ PanelWindow {
     HyprlandFocusGrab {
         windows: [root]
         active: root.open
-        onCleared: State.appMenuOpen = false
+        onCleared: ShellState.appMenuOpen = false
     }
 
     function close() {
-        State.appMenuOpen = false;
+        ShellState.appMenuOpen = false;
     }
 
     function run(cmd) {
