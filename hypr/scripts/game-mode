@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+# game-mode — make one window (usually a game) exclusive and immutable, and
+# turn Hyprland's eye-candy off while it runs.
+#
+#   game-mode on [ADDRESS] [--single-monitor]
+#   game-mode off
+#   game-mode toggle [ADDRESS] [--single-monitor]
+#   game-mode status [-q]
+#   game-mode run [--exclusive] [--single-monitor] [--] CMD [ARGS...]
+#
+# Everything is idempotent and degrades gracefully when qs (Quickshell),
+# gamemoded, powerprofilesctl, sudo, jq or the secondary monitor are missing.
+set -euo pipefail
+
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE_FILE="$RUNTIME_DIR/hypr-game-mode.state"
+SECONDARY_MONITOR="${GAME_MODE_SECONDARY_MONITOR:-DP-1}"
+SHELL_CFG="${GAME_MODE_SHELL_CONFIG:-hyprshell}"
+SINGLE_MONITOR=0
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+log() { printf '[game-mode] %s\n' "$*" >&2; }
+
+notify() {
+  have notify-send && notify-send -a "Game mode" -t "${2:-1500}" "$1" >/dev/null 2>&1 || true
+}
+
+hc() { hyprctl "$@" 2>/dev/null || true; }
+
+# ---------------------------------------------------------------- state ---
+state_get() {
+  [[ -f "$STATE_FILE" ]] || return 1
+  sed -n "s/^$1=//p" "$STATE_FILE" | head -n1
+}
+
+state_write() {
+  # $1 = address, $2 = pid
+  local ts
+  ts="$(date +%s)"
+  local prev_profile=""
+  have powerprofilesctl && prev_profile="$(powerprofilesctl get 2>/dev/null || true)"
+  cat >"$STATE_FILE" <<EOS
+address=$1
+pid=$2
+started=$ts
+profile=${prev_profile:-balanced}
+single_monitor=$SINGLE_MONITOR
+shell_config=$SHELL_CFG
+EOS
+}
+
+is_on() { [[ -f "$STATE_FILE" ]]; }
+
+# --------------------------------------------------------------- helpers ---
+active_json() { hyprctl activewindow -j 2>/dev/null || echo '{}'; }
+
+active_address() {
+  if have jq; then
+    active_json | jq -r '.address // empty' 2>/dev/null || true
+  else
+    active_json | sed -n 's/.*"address": *"\([^"]*\)".*/\1/p' | head -n1
+  fi
+}
+
+pid_of_address() {
+  # $1 = 0x... address
+  if have jq; then
+    hyprctl clients -j 2>/dev/null | jq -r --arg a "$1" '.[] | select(.address==$a) | .pid' 2>/dev/null | head -n1
+  else
+    hyprctl activewindow -j 2>/dev/null | sed -n 's/.*"pid": *\([0-9]*\).*/\1/p' | head -n1
+  fi
+}
+
+shell_ipc() {
+  # $1 = on|off
+  have qs || return 0
+  local v=false
+  [[ "$1" == "on" ]] && v=true
+  qs -c "$SHELL_CFG" ipc call shell setGameMode "$v" >/dev/null 2>&1 || true
+}
+
+set_nice() {
+  # $1 = pid, $2 = nice value
+  local pid="$1" val="$2"
+  [[ -n "$pid" && "$pid" != "0" && "$pid" != "null" ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+  if have sudo && sudo -n true >/dev/null 2>&1; then
+    sudo -n renice -n "$val" -p "$pid" >/dev/null 2>&1 || renice -n "$val" -p "$pid" >/dev/null 2>&1 || true
+  else
+    renice -n "$val" -p "$pid" >/dev/null 2>&1 || true
+  fi
+  # Also apply to the whole process tree (wine/proton spawn helpers).
+  if have pgrep; then
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+      renice -n "$val" -p "$child" >/dev/null 2>&1 || true
+    done
+  fi
+}
+
+set_ionice() {
+  local pid="$1"
+  [[ -n "$pid" && "$pid" != "0" && "$pid" != "null" ]] || return 0
+  have ionice || return 0
+  ionice -c 2 -n 0 -p "$pid" >/dev/null 2>&1 || true
+}
+
+gamemode_dbus() {
+  # $1 = RegisterGameByPID|UnregisterGameByPID, $2 = pid
+  local pid="$2"
+  [[ -n "$pid" && "$pid" != "0" && "$pid" != "null" ]] || return 0
+  have dbus-send || return 0
+  pgrep -x gamemoded >/dev/null 2>&1 || return 0
+  dbus-send --session --print-reply --dest=com.feralinteractive.GameMode \
+    /com/feralinteractive/GameMode "com.feralinteractive.GameMode.$1" \
+    "int32:$pid" "int32:$pid" >/dev/null 2>&1 || true
+}
+
+power_profile() {
+  have powerprofilesctl || return 0
+  powerprofilesctl set "$1" >/dev/null 2>&1 || true
+}
+
+pause_background() {
+  systemctl --user stop syncthing.service >/dev/null 2>&1 || true
+  systemctl --user stop gammastep.service >/dev/null 2>&1 || true
+  pkill -x gammastep >/dev/null 2>&1 || true
+  if have sudo; then
+    sudo -n systemctl stop ollama >/dev/null 2>&1 || true
+  fi
+}
+
+resume_background() {
+  systemctl --user start syncthing.service >/dev/null 2>&1 || true
+  systemctl --user start gammastep.service >/dev/null 2>&1 || true
+  # If gammastep is not a user service on this box, relaunch it detached.
+  if have gammastep && ! pgrep -x gammastep >/dev/null 2>&1 \
+     && ! systemctl --user is-active gammastep.service >/dev/null 2>&1; then
+    setsid -f gammastep >/dev/null 2>&1 || true
+  fi
+  if have sudo; then
+    sudo -n systemctl start ollama >/dev/null 2>&1 || true
+  fi
+}
+
+apply_window_rules() {
+  # $1 = address (0x...)
+  local a="$1"
+  [[ -n "$a" ]] || return 0
+  hc dispatch focuswindow "address:$a"
+  hc dispatch setfloating off "address:$a" 2>/dev/null || hc dispatch settiled "address:$a"
+  # Real fullscreen and tell the client it is fullscreen (Hyprland >= 0.42).
+  hc dispatch fullscreenstate 2 2
+  # Temporary, address-scoped rules (Hyprland 0.55 syntax). Try both the
+  # documented and the legacy spelling of the focus lock.
+  hyprctl keyword windowrule "stay_focused on, no_border on, immediate on, opacity 1 override, no_blur on, no_shadow on, no_anim on, no_dim on, match:address $a" >/dev/null 2>&1 \
+    || hyprctl keyword windowrule "stayfocused on, no_border on, immediate on, opacity 1 override, match:address $a" >/dev/null 2>&1 \
+    || true
+}
+
+apply_compositor_keywords() {
+  hyprctl --batch "\
+keyword animations:enabled 0; \
+keyword decoration:blur:enabled 0; \
+keyword decoration:shadow:enabled 0; \
+keyword decoration:rounding 0; \
+keyword decoration:dim_inactive 0; \
+keyword decoration:active_opacity 1; \
+keyword decoration:inactive_opacity 1; \
+keyword general:gaps_in 0; \
+keyword general:gaps_out 0; \
+keyword general:border_size 0; \
+keyword general:allow_tearing 1; \
+keyword render:direct_scanout 2; \
+keyword misc:focus_on_activate 0; \
+keyword input:follow_mouse 2" >/dev/null 2>&1 || true
+}
+
+secondary_dpms() {
+  # $1 = on|off
+  [[ "$SINGLE_MONITOR" == "1" ]] || return 0
+  hc dispatch dpms "$1" "$SECONDARY_MONITOR"
+}
+
+# ------------------------------------------------------------- commands ---
+cmd_on() {
+  local addr="" arg
+  for arg in "$@"; do
+    case "$arg" in
+      --single-monitor) SINGLE_MONITOR=1 ;;
+      0x*) addr="$arg" ;;
+      address:*) addr="${arg#address:}" ;;
+      *) ;;
+    esac
+  done
+
+  if is_on; then
+    log "already on (window $(state_get address))"
+    return 0
+  fi
+
+  [[ -n "$addr" ]] || addr="$(active_address)"
+  local pid=""
+  [[ -n "$addr" ]] && pid="$(pid_of_address "$addr")"
+
+  state_write "${addr:-none}" "${pid:-0}"
+
+  apply_compositor_keywords
+  shell_ipc on
+  apply_window_rules "$addr"
+
+  set_nice "$pid" -10
+  set_ionice "$pid"
+  gamemode_dbus RegisterGameByPID "$pid"
+
+  pause_background
+  secondary_dpms off
+  power_profile performance
+
+  log "on (window ${addr:-none}, pid ${pid:-?})"
+  notify "Game mode on"
+}
+
+cmd_off() {
+  if ! is_on; then
+    # Still make sure the compositor is in a sane state.
+    hc reload
+    shell_ipc off
+    return 0
+  fi
+
+  local addr pid profile
+  addr="$(state_get address || true)"
+  pid="$(state_get pid || true)"
+  profile="$(state_get profile || true)"
+  SINGLE_MONITOR="$(state_get single_monitor || echo 0)"
+
+  # Try to drop the temporary rule first; a reload also wipes runtime keywords.
+  if [[ -n "$addr" && "$addr" != "none" ]]; then
+    hyprctl keyword windowrule "unset, match:address $addr" >/dev/null 2>&1 || true
+    hc dispatch fullscreenstate 0 0 "address:$addr" 2>/dev/null || true
+  fi
+  hc reload
+
+  shell_ipc off
+  set_nice "$pid" 0
+  gamemode_dbus UnregisterGameByPID "$pid"
+
+  secondary_dpms on
+  power_profile "${profile:-balanced}"
+  resume_background
+
+  rm -f "$STATE_FILE"
+  log "off"
+  notify "Game mode off"
+}
+
+cmd_status() {
+  local quiet=0
+  [[ "${1:-}" == "-q" ]] && quiet=1
+  if is_on; then
+    [[ $quiet -eq 1 ]] || { echo "on"; cat "$STATE_FILE"; }
+    return 0
+  fi
+  [[ $quiet -eq 1 ]] || echo "off"
+  return 1
+}
+
+cmd_toggle() {
+  if is_on; then cmd_off; else cmd_on "$@"; fi
+}
+
+# Return the address of a window whose pid is $1 or a descendant of $1.
+find_window_for_pid() {
+  local root="$1"
+  have jq || { active_address; return 0; }
+  local pids="$root"
+  if have pgrep; then
+    local queue="$root" p kids
+    while [[ -n "$queue" ]]; do
+      p="${queue%% *}"
+      queue="${queue#"$p"}"; queue="${queue# }"
+      kids="$(pgrep -P "$p" 2>/dev/null | tr '\n' ' ' || true)"
+      [[ -n "$kids" ]] && { pids="$pids $kids"; queue="$queue $kids"; queue="${queue# }"; }
+    done
+  fi
+  local jqset
+  jqset="$(printf '%s\n' $pids | jq -R 'tonumber? // empty' | jq -s '.')"
+  hyprctl clients -j 2>/dev/null \
+    | jq -r --argjson set "$jqset" '[.[] | select(.pid as $p | $set | index($p)) | select(.mapped != false)] | sort_by(.focusHistoryID) | .[0].address // empty' 2>/dev/null \
+    || true
+}
+
+cmd_run() {
+  local exclusive=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --exclusive) exclusive=1; shift ;;
+      --single-monitor) SINGLE_MONITOR=1; shift ;;
+      --) shift; break ;;
+      -*) log "unknown flag $1"; shift ;;
+      *) break ;;
+    esac
+  done
+  [[ $# -gt 0 ]] || { log "run: missing command"; return 2; }
+
+  local -a cmd=("$@")
+  if [[ $exclusive -eq 1 ]] && have gamescope; then
+    cmd=(gamescope -W 2560 -H 1440 -r 144 -f --immediate-flips --force-grab-cursor -- "${cmd[@]}")
+  fi
+  if have gamemoderun; then
+    cmd=(gamemoderun "${cmd[@]}")
+  fi
+
+  local extra=()
+  [[ "$SINGLE_MONITOR" == "1" ]] && extra+=(--single-monitor)
+
+  # Always restore on exit, even if we die.
+  trap 'cmd_off >/dev/null 2>&1 || true' EXIT INT TERM HUP
+
+  "${cmd[@]}" &
+  local child=$!
+
+  local addr="" i
+  for ((i = 0; i < 120; i++)); do
+    kill -0 "$child" 2>/dev/null || break
+    addr="$(find_window_for_pid "$child")"
+    [[ -n "$addr" ]] && break
+    sleep 0.5
+  done
+
+  if kill -0 "$child" 2>/dev/null; then
+    if [[ -n "$addr" ]]; then
+      cmd_on "$addr" "${extra[@]}"
+    else
+      log "no window found for pid $child after 60 s; using focused window"
+      cmd_on "${extra[@]}"
+    fi
+    wait "$child" || true
+  fi
+  cmd_off
+  trap - EXIT INT TERM HUP
+}
+
+usage() {
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+main() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+    on)      cmd_on "$@" ;;
+    off)     cmd_off ;;
+    toggle)  cmd_toggle "$@" ;;
+    status)  cmd_status "$@" ;;
+    run)     cmd_run "$@" ;;
+    -h|--help|help|"") usage; [[ -n "$sub" ]] || return 2 ;;
+    *) log "unknown subcommand: $sub"; usage; return 2 ;;
+  esac
+}
+
+main "$@"

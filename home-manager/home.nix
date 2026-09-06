@@ -17,7 +17,6 @@
     easyeffects
     fcitx5
     foot
-    fuzzel
     gammastep
     gnome-control-center
     gnome-system-monitor
@@ -35,11 +34,10 @@
     playerctl
     polkit_gnome
     slurp
+    quickshell
     starship
     swappy
-    awww
     wl-clipboard
-    wlogout
     wofi
     wf-recorder
     signal-desktop
@@ -59,9 +57,44 @@
     GLFW_IM_MODULE = "ibus";
     INPUT_METHOD = "fcitx";
     QT_QPA_PLATFORM = "wayland";
-    QT_QPA_PLATFORMTHEME = "qt6ct";
     XDG_STATE_HOME = "${config.home.homeDirectory}/.local/state";
-    ILLOGICAL_IMPULSE_VIRTUAL_ENV = "${config.home.homeDirectory}/.local/state/ags/.venv";
+  };
+
+  # --- Adwaita / GNOME HIG theming ---
+  gtk = {
+    enable = true;
+    theme = {
+      name = "adw-gtk3-dark";
+      package = pkgs.adw-gtk3;
+    };
+    iconTheme = {
+      name = "Adwaita";
+      package = pkgs.adwaita-icon-theme;
+    };
+    cursorTheme = {
+      name = "Adwaita";
+      size = 24;
+    };
+    font = {
+      name = "Cantarell";
+      size = 11;
+    };
+    gtk3.extraConfig.gtk-application-prefer-dark-theme = 1;
+    gtk4.extraConfig.gtk-application-prefer-dark-theme = 1;
+  };
+  dconf.settings."org/gnome/desktop/interface" = {
+    color-scheme = "prefer-dark";
+    gtk-theme = "adw-gtk3-dark";
+    icon-theme = "Adwaita";
+    cursor-theme = "Adwaita";
+    font-name = "Cantarell 11";
+    monospace-font-name = "JetBrainsMono Nerd Font 12";
+    enable-animations = true;
+  };
+  qt = {
+    enable = true;
+    platformTheme.name = "gnome";
+    style.name = "adwaita-dark";
   };
 
   programs.fish = {
@@ -74,10 +107,6 @@
     '';
     interactiveShellInit = ''
       set fish_greeting
-
-      if test -f ~/.cache/ags/user/generated/terminal/sequences.txt
-        cat ~/.cache/ags/user/generated/terminal/sequences.txt
-      end
 
       set -g fish_color_command #ECECE7
       set -gx LS_COLORS "di=01;38;2;158;178;119:fi=03;38;2;222;216;192:ln=38;2;198;194;78:or=38;2;164;0;0:mi=38;2;164;0;0:ex=38;2;255;123;123"

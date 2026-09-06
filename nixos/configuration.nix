@@ -20,6 +20,8 @@
       ./modules/environment.nix
       ./modules/drivers.nix
       ./modules/zen-notes.nix
+      ./modules/gaming.nix
+      ./modules/desktop.nix
     ]
     ++ lib.optional (builtins.pathExists ./modules/syncthing-local.nix) ./modules/syncthing-local.nix;
 
