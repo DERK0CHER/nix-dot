@@ -1,14 +1,15 @@
-"""One normalised menu tree from either com.canonical.dbusmenu or
-org.gtk.Menus. See core.py for the node contract."""
+"""One normalised menu tree from com.canonical.dbusmenu, org.gtk.Menus, or --
+for GTK4/libadwaita apps that export no menu at all -- a tree synthesised from
+org.gtk.Actions. See core.py for the node contract."""
 
-from . import core, dbusmenu, gtkmenu
+from . import core, dbusmenu, gtkactions, gtkmenu
 from .core import (BadNodeId, MenuError, ServiceGone, UnsupportedProtocol,
                    strip_mnemonics)
 
 __all__ = ["fetch", "activate", "watch", "resolve", "strip_mnemonics",
            "MenuError", "ServiceGone", "UnsupportedProtocol", "BadNodeId"]
 
-BACKENDS = {"dbusmenu": dbusmenu, "gtk": gtkmenu}
+BACKENDS = {"dbusmenu": dbusmenu, "gtk": gtkmenu, "gtkactions": gtkactions}
 
 
 def resolve(name, path, protocol=None):

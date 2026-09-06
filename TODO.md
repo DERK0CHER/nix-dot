@@ -47,6 +47,9 @@ nobody has to redo it:
 | `C4` | Add the '>' command-palette mode to the launcher | M &middot; 1-3 h |
 | `C5` | Build KeybindEditor.qml with press-a-combo capture | L &middot; a day or more |
 | `C6` | Add the Super+Slash cheat sheet overlay | M &middot; 1-3 h |
+| | **Global menu** | |
+| `M1` | Finish the GTK-actions menu for GNOME apps (started, untested) | M &middot; 1-3 h |
+| `M2` | Steam: entries reachable in the dropdown but missing from the bar row | S &middot; under 1 h |
 | | **Bluetooth** | |
 | `BT1` | Make the quick-settings toggle handle the rfkill block | S &middot; under 1 h |
 | `BT2` | Decide: finish the in-shell Bluetooth UI, or hand off to blueman | M &middot; 1-3 h |
@@ -621,6 +624,74 @@ Build one shared, UI-free model singleton (`Commands.qml` + `commands.json`) and
 - Hyprland's keysym name for '/' under a German keyboard layout (`slash` vs `question` vs requiring Shift in the modmask). Affects the cheat sheet bind only.
 - Whether `hyprctl reload` on this RX 9060 XT is fully safe given AQ_NO_ATOMIC=1 and misc:vrr=0 — reload re-applies env and monitor rules, and the whole rebind flow calls it on every change. Smoke test before shipping.
 - Freedesktop symbolic icon names in the catalogue are guesses per category; `Quickshell.iconPath(name, true)` returning empty for a missing name must be handled (fall back to no icon, not a broken image).
+
+---
+
+## Global menu
+
+### `M1` &middot; Finish the GTK-actions menu for GNOME apps
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** GTK4/libadwaita apps have no menu bar to mirror, so the bar is empty for every GNOME
+application - but they do export their actions, which is the same content the hamburger holds.
+
+**Files**
+
+- `tools/menu-client/menu_client/gtkactions.py` (started, uncommitted work in the tree)
+- `tools/menu-client/menu_client/{__init__,cli,core}.py`
+- `tools/menu-client/labels/`
+- `quickshell/hyprshell/AppMenuSource.qml`
+
+**Steps**
+
+1. This was started and stopped mid-way; the backend file exists but was never run against a real app. Read what is there before writing anything.
+2. Measured on 2026-09-06 with a live Nautilus: `org.gtk.Actions` is exported on both `/org/gnome/Nautilus` (10 actions: preferences, shortcuts, about, show-file-transfers, clone-window, help, new-window, kill, quit, search-settings) and `/org/gnome/Nautilus/window/1` (14 more: new-tab, undo, redo, toggle-sidebar, go-home, the `tab-*` family, …). `org.gtk.Menus` is **not** exported by these apps - do not look for it.
+3. `DescribeAll` gives the enabled flag, the parameter signature and the current state, but **no label and no grouping**. Both have to be synthesised: mechanically from the action name as the fallback (`new-window` → "New Window"), refined by a per-app table under `labels/<bus-name>.json`. Keep that format trivial enough that adding an app needs no code.
+4. Drop actions that cannot sensibly be invoked from a menu: a non-empty, non-string parameter type needs an argument nobody can guess, and there is obvious noise (Nautilus exports a single-letter `i` action).
+5. `AppMenuSource.qml` needs the fallback path: when `hyprctl appmenu` has no entry for the focused window - always the case for GTK apps, they do not speak the Wayland appmenu protocol - resolve the app's bus name from the window pid (`hyprctl activewindow -j` → pid, then the PID column of `busctl --user list`) and ask for the actions instead.
+
+**Done when**
+
+- [ ] Focusing a Nautilus window fills the bar with readable, grouped entries.
+- [ ] Clicking one performs the action in Nautilus (`new-window` is the safe visible test).
+- [ ] `tools/menu-client/tests/run.sh` still passes and covers the new backend.
+- [ ] Focusing a terminal still clears the bar with no errors in the shell log.
+
+**Risks**
+
+- The uncommitted work in the tree is unverified against a real app; treat it as a sketch.
+- Labels will read like machine names for any app without a table. Ship Nautilus, accept the rest looking rough until someone adds a file.
+- Electron, Firefox and Chromium export nothing on Wayland by any of these routes. Out of scope, and not fixable here.
+
+### `M2` &middot; Steam: entries reachable in the dropdown but missing from the bar row
+
+**Effort:** S &middot; under 1 h
+
+**Why.** Reported from real use: with Steam focused the menu opens and works from the dropdown,
+but the top-level entries do not appear as chips in the bar row - so the feature looks broken
+until you already know it is there.
+
+**Files**
+
+- `quickshell/hyprshell/MenuBar.qml`
+- `quickshell/hyprshell/AppMenuSource.qml`
+
+**Steps**
+
+1. Reproduce first and pin down which half is wrong: with Steam focused, compare `hyprctl appmenu`, a `menu-client dump` of that service, and what the bar renders. The dropdown working means the tree arrives, so suspect the row rendering rather than the source.
+2. Likely candidates, in order: top-level nodes whose `label` is empty (Steam is Qt but not KXmlGui, so its root may differ in shape); the `maxWidth` clamp in `Bar.qml` collapsing the row to nothing; or top-level entries that are `visible: false` and correctly filtered while their children are not.
+3. Whatever the cause, add the degenerate case to whatever guards the row so an odd tree shape yields *something* rather than an empty area.
+4. Check the same app under game mode, where the bar is hidden entirely - that is expected and not this bug.
+
+**Done when**
+
+- [ ] With Steam focused, its top-level menus appear as chips in the bar and open on click.
+- [ ] Kate and Dolphin are unchanged.
+
+**Risks**
+
+- Steam is a Qt application that does not use KXmlGui, so its exported tree may legitimately be shaped differently from Kate's; the fix may belong in normalisation rather than rendering.
 
 ---
 

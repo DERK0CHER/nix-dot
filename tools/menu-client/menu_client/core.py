@@ -272,14 +272,24 @@ def child_paths(name, path):
 
 
 def detect(name, path):
-    """Return "dbusmenu" or "gtk". Introspection first, then a live probe for
-    objects that do not advertise themselves."""
+    """Return "dbusmenu", "gtk" or "gtkactions".
+
+    Introspection first, then a live probe for objects that do not advertise
+    themselves. "gtkactions" is the last resort: GTK4/libadwaita apps have no
+    menu model to mirror, only an action group, so it is only chosen once both
+    real menu protocols have been ruled out.
+    """
     require_owner(name)
     ifaces = interfaces_at(name, path)
     if DBUSMENU_IFACE in ifaces:
         return "dbusmenu"
     if GTK_MENUS_IFACE in ifaces:
         return "gtk"
+    # Introspection answered and named neither menu protocol; if it named the
+    # action group we are done, and the two live probes below would only be two
+    # guaranteed round trips of UnknownMethod.
+    if ifaces and GTK_ACTIONS_IFACE in ifaces:
+        return "gtkactions"
 
     obj = bus().get_object(name, path, introspect=False)
     try:
@@ -302,7 +312,14 @@ def detect(name, path):
         if _is_gone(exc):
             raise ServiceGone(f"bus name {name!r} disappeared") from exc
 
+    try:
+        obj.DescribeAll(dbus_interface=GTK_ACTIONS_IFACE, timeout=CALL_TIMEOUT)
+        return "gtkactions"
+    except dbus.DBusException as exc:
+        if _is_gone(exc):
+            raise ServiceGone(f"bus name {name!r} disappeared") from exc
+
     raise UnsupportedProtocol(
-        f"{name} {path} implements neither {DBUSMENU_IFACE} nor "
-        f"{GTK_MENUS_IFACE}"
+        f"{name} {path} implements none of {DBUSMENU_IFACE}, "
+        f"{GTK_MENUS_IFACE}, {GTK_ACTIONS_IFACE}"
         + (f" (interfaces seen: {', '.join(sorted(ifaces))})" if ifaces else ""))
