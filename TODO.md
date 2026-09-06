@@ -20,9 +20,9 @@ nobody has to redo it:
 - `hyprctl binds -j` returns one object per bind with `modmask`, `key`, `dispatcher`, `arg`,
   plus `locked` / `mouse` / `repeat` / `release` / `submap` / `description`. The modmask
   arithmetic holds: shift 1, ctrl 4, alt 8, super 64, so 65 is super+shift and 72 is super+alt.
-- `qmldir` only needs entries for singletons. Plain components in the same directory resolve
-  automatically, which is how `Bar.qml` and `Clock.qml` already work, so new panels and widgets
-  need no registration.
+- `qmldir` must list EVERY component, not only singletons - verified by running the shell on
+  2026-09-06. An earlier note here claimed the opposite; that was wrong and cost a startup
+  failure. Avoid names that shadow QtQuick built-ins (`State` did, and broke every binding).
 - The Claude CLI has both `--print` and `--output-format`.
 - Transcript rows carry `timestamp`, `message.model` and `message.usage` with `input_tokens`,
   `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` and an `iterations`
@@ -47,6 +47,14 @@ nobody has to redo it:
 | `C4` | Add the '>' command-palette mode to the launcher | M &middot; 1-3 h |
 | `C5` | Build KeybindEditor.qml with press-a-combo capture | L &middot; a day or more |
 | `C6` | Add the Super+Slash cheat sheet overlay | M &middot; 1-3 h |
+| | **Global menu** | |
+| `M1` | Finish the GTK-actions menu for GNOME apps (started, untested) | M &middot; 1-3 h |
+| `M2` | Steam: entries reachable in the dropdown but missing from the bar row | S &middot; under 1 h |
+| `M3` | Find a switcher that works during a game without costing scanout | M &middot; 1-3 h |
+| `M4` | Bring the user's Windows script into the repo and integrate it | M &middot; 1-3 h |
+| | **Bluetooth** | |
+| `BT1` | Make the quick-settings toggle handle the rfkill block | S &middot; under 1 h |
+| `BT2` | Decide: finish the in-shell Bluetooth UI, or hand off to blueman | M &middot; 1-3 h |
 | | **Window switching (Alt+Tab)** | |
 | `W1` | Replace cyclenext with a real MRU Alt+Tab switcher overlay | M &middot; 1-3 h |
 | `W2` | Add live window thumbnails to the switcher | M &middot; 1-3 h |
@@ -468,7 +476,7 @@ Build one shared, UI-free model singleton (`Commands.qml` + `commands.json`) and
 
 **Steps**
 
-1. Create quickshell/hyprshell/Commands.qml as `pragma Singleton` + `Singleton {}` (matching Theme.qml/State.qml style) and register it in qmldir: `singleton Commands 1.0 Commands.qml`.
+1. Create quickshell/hyprshell/Commands.qml as `pragma Singleton` + `Singleton {}` (matching Theme.qml/ShellState.qml style) and register it in qmldir: `singleton Commands 1.0 Commands.qml`.
 2. Load the catalogue with `Quickshell.Io.FileView { path: Qt.resolvedUrl("commands.json"); watchChanges: true; onFileChanged: reload(); onLoaded: root.parse(text()) }` — same pattern AppMenu.qml already uses for recently-used.xbel.
 3. Load live state with `Process { command: ["hyprctl","binds","-j"]; stdout: StdioCollector { onStreamFinished: root.parseBinds(text) } }`, exactly the Process/StdioCollector idiom in Services.qml. Re-run it on startup and whenever Hyprland emits `configreloaded` (subscribe via Quickshell.Hyprland `Hyprland.rawEvent`).
 4. Implement modmask <-> mods with this table, which I verified empirically against this repo's own binds on the running compositor: 1=SHIFT, 2=CAPS, 4=CTRL, 8=ALT, 16=MOD2, 32=MOD3, 64=SUPER, 128=MOD5. Checks that passed: modmask 5 == Ctrl+Shift (the Ctrl+Shift,Escape gnome-system-monitor bind), 8 == Alt (Alt,Tab), 65 == Super+Shift, 68 == Ctrl+Super, 72 == Super+Alt.
@@ -621,6 +629,241 @@ Build one shared, UI-free model singleton (`Commands.qml` + `commands.json`) and
 
 ---
 
+## Global menu
+
+### `M1` &middot; Finish the GTK-actions menu for GNOME apps
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** GTK4/libadwaita apps have no menu bar to mirror, so the bar is empty for every GNOME
+application - but they do export their actions, which is the same content the hamburger holds.
+
+**Files**
+
+- `tools/menu-client/menu_client/gtkactions.py` (started, uncommitted work in the tree)
+- `tools/menu-client/menu_client/{__init__,cli,core}.py`
+- `tools/menu-client/labels/`
+- `quickshell/hyprshell/AppMenuSource.qml`
+
+**Steps**
+
+1. This was started and stopped mid-way; the backend file exists but was never run against a real app. Read what is there before writing anything.
+2. Measured on 2026-09-06 with a live Nautilus: `org.gtk.Actions` is exported on both `/org/gnome/Nautilus` (10 actions: preferences, shortcuts, about, show-file-transfers, clone-window, help, new-window, kill, quit, search-settings) and `/org/gnome/Nautilus/window/1` (14 more: new-tab, undo, redo, toggle-sidebar, go-home, the `tab-*` family, …). `org.gtk.Menus` is **not** exported by these apps - do not look for it.
+3. `DescribeAll` gives the enabled flag, the parameter signature and the current state, but **no label and no grouping**. Both have to be synthesised: mechanically from the action name as the fallback (`new-window` → "New Window"), refined by a per-app table under `labels/<bus-name>.json`. Keep that format trivial enough that adding an app needs no code.
+4. Drop actions that cannot sensibly be invoked from a menu: a non-empty, non-string parameter type needs an argument nobody can guess, and there is obvious noise (Nautilus exports a single-letter `i` action).
+5. `AppMenuSource.qml` needs the fallback path: when `hyprctl appmenu` has no entry for the focused window - always the case for GTK apps, they do not speak the Wayland appmenu protocol - resolve the app's bus name from the window pid (`hyprctl activewindow -j` → pid, then the PID column of `busctl --user list`) and ask for the actions instead.
+
+**Done when**
+
+- [ ] Focusing a Nautilus window fills the bar with readable, grouped entries.
+- [ ] Clicking one performs the action in Nautilus (`new-window` is the safe visible test).
+- [ ] `tools/menu-client/tests/run.sh` still passes and covers the new backend.
+- [ ] Focusing a terminal still clears the bar with no errors in the shell log.
+
+**Risks**
+
+- The uncommitted work in the tree is unverified against a real app; treat it as a sketch.
+- Labels will read like machine names for any app without a table. Ship Nautilus, accept the rest looking rough until someone adds a file.
+- Electron, Firefox and Chromium export nothing on Wayland by any of these routes. Out of scope, and not fixable here.
+
+### `M2` &middot; Steam: entries reachable in the dropdown but missing from the bar row
+
+**Effort:** S &middot; under 1 h
+
+**Why.** Reported from real use: with Steam focused the menu opens and works from the dropdown,
+but the top-level entries do not appear as chips in the bar row - so the feature looks broken
+until you already know it is there.
+
+**Files**
+
+- `quickshell/hyprshell/MenuBar.qml`
+- `quickshell/hyprshell/AppMenuSource.qml`
+
+**Steps**
+
+1. Reproduce first and pin down which half is wrong: with Steam focused, compare `hyprctl appmenu`, a `menu-client dump` of that service, and what the bar renders. The dropdown working means the tree arrives, so suspect the row rendering rather than the source.
+2. Likely candidates, in order: top-level nodes whose `label` is empty (Steam is Qt but not KXmlGui, so its root may differ in shape); the `maxWidth` clamp in `Bar.qml` collapsing the row to nothing; or top-level entries that are `visible: false` and correctly filtered while their children are not.
+3. Whatever the cause, add the degenerate case to whatever guards the row so an odd tree shape yields *something* rather than an empty area.
+4. Check the same app under game mode, where the bar is hidden entirely - that is expected and not this bug.
+
+**Done when**
+
+- [ ] With Steam focused, its top-level menus appear as chips in the bar and open on click.
+- [ ] Kate and Dolphin are unchanged.
+
+**Risks**
+
+- Steam is a Qt application that does not use KXmlGui, so its exported tree may legitimately be shaped differently from Kate's; the fix may belong in normalisation rather than rendering.
+
+### `M3` &middot; Find a switcher that works during a game without costing scanout
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** Alt+Tab is now blocked outright in game mode, which is correct but blunt - you still
+sometimes need to reach another window mid-session, and right now the only way out is leaving
+game mode entirely.
+
+**Files**
+
+- `quickshell/hyprshell/{Switcher.qml,shell.qml}`
+- `hypr/scripts/game-mode`
+
+**Steps**
+
+1. Understand why the block exists before designing around it. An overlay is a layer surface
+   above the game, and **any** surface above a fullscreen window stops Hyprland from handing the
+   buffer straight to the display. That is direct scanout - the Wayland equivalent of exclusive
+   fullscreen - and losing it costs a frame of latency mid-match. Measured on this machine: with
+   the bar mapped on the game's output the surface is there, and hiding the bar removes it.
+2. Options worth weighing, cheapest first:
+   - **Switch without showing anything.** Alt+Tab cycles focus directly with no overlay, exactly
+     like the old `cyclenext` but in most-recently-used order. No surface, no scanout cost. Loses
+     the preview, which is most of the point.
+   - **Overlay only on the other monitor.** This is a two-screen desk and the game owns one of
+     them. Rendering the switcher on the *other* output leaves the game's scanout untouched.
+     Cheap, and probably the right answer here.
+   - **Accept the cost while the overlay is up.** One or two frames during a deliberate gesture
+     may be a fair trade; make it a setting rather than a decision taken for the user.
+3. Whichever is chosen, verify the scanout claim rather than trusting it: `debug:disable_logs`
+   is on in `general.conf`, so turn it off, watch for scanout messages with and without the
+   overlay, and turn it back on.
+4. Keep the current hard block as the default until something is measured to be better.
+
+**Done when**
+
+- [ ] A window can be reached during game mode without leaving it.
+- [ ] The chosen approach is shown not to cost the game a frame, or the cost is documented and opt-in.
+
+**Risks**
+
+- Direct scanout has more preconditions than the overlay (format, opacity, scaling), so removing
+  the overlay may not restore it on its own - measure, do not assume.
+
+### `M4` &middot; Bring the user's Windows script into the repo and integrate it
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** It lives outside version control today, so it is neither backed up nor reproducible on
+the other machine, and nothing in this setup knows it exists.
+
+**Files**
+
+- `scripts/` or `hypr/scripts/` (decide once the script's scope is known)
+- `hypr/hyprland/keybinds.conf` or `~/.config/hyprshell/commands.json`
+- `README.md`
+
+**Steps**
+
+1. **Ask first, then write.** The script has not been seen yet: get the path, read it, and record
+   here what it actually does before designing an integration. Everything below is provisional.
+2. Decide where it belongs by what it is. A desktop action belongs beside `game-mode` in
+   `hypr/scripts/`; a general utility belongs in a top-level `scripts/`. Do not scatter.
+3. Check it for machine-specific assumptions - hardcoded paths, monitor names, a username - the
+   same way the host split handles them, so it works on the NixOS machine too.
+4. Integrate rather than merely store it: give it a command-store entry so it is reachable from
+   the palette by a human-readable name, and a keybind only if it earns one.
+5. If it needs packages, add them to `arch/packages.txt` and note the NixOS equivalent.
+6. `bash -n` it, and state plainly in the README what is verified versus inherited as-is.
+
+**Done when**
+
+- [ ] The script is tracked in the repo and still runs from its new location.
+- [ ] It is reachable from the command palette under a name that says what it does.
+- [ ] Any machine-specific values are host-scoped rather than hardcoded.
+
+**Risks**
+
+- It may carry credentials or private paths - read it before committing, and gitignore anything
+  that must not be published.
+- "Windows" is ambiguous: it could mean a window-management helper or something involving a
+  Windows install or a VM. Confirm which before touching it.
+
+---
+
+## Bluetooth
+
+### Recommended approach
+
+The toggle in Quick Settings does nothing, and the diagnosis is not what it looks like.
+`Services.qml:157` runs `bluetoothctl power on`, but the adapter was **soft-blocked by
+rfkill**, and `bluetoothctl` cannot lift an rfkill block - it fails and the UI flips its
+own state anyway, so the switch looks like it worked. Verified on 2026-09-06: `rfkill list
+bluetooth` reported `Soft blocked: yes`, `bluetoothctl show` said `Powered: no`, and after
+a single `rfkill unblock bluetooth` the same `bluetoothctl power on` succeeded and the
+adapter came up. Any Bluetooth work should start there, not with a new UI.
+
+Then a product decision, `BT2`. The shell's toggle is a power switch and nothing more: no
+device list, no pairing, no connect. Either grow it into a real Bluetooth menu, or accept
+that pairing belongs in a dedicated tool and make the toggle open blueman - which is
+already installed. Given how rarely pairing happens and how much surface a full Bluetooth
+UI carries, handing off is the honest default; keep the in-bar control for power and for
+showing what is connected.
+
+### `BT1` &middot; Make the quick-settings toggle handle the rfkill block
+
+**Effort:** S &middot; under 1 h
+
+**Why.** The switch currently reports success while doing nothing, which is worse than an
+error - the user tries it, sees the pill change, and concludes Bluetooth is broken.
+
+**Files**
+
+- `quickshell/hyprshell/Services.qml`
+- `quickshell/hyprshell/QuickSettings.qml`
+
+**Steps**
+
+1. In `toggleBluetooth`, replace the bare `bluetoothctl power on` with `rfkill unblock bluetooth && bluetoothctl power on`, and on the way down `bluetoothctl power off` (leave rfkill alone - blocking the radio is a stronger statement than powering down, and lockdown mode owns that).
+2. Stop flipping `btPowered` optimistically. Set it from the next poll of `bluetoothctl show`, so the pill reflects the adapter rather than the intent.
+3. Poll `rfkill list bluetooth -o SOFT,HARD -n` alongside the power state. A **hard** block is a physical switch and cannot be cleared in software: show the tile disabled with "blocked in hardware" rather than a toggle that cannot work.
+4. When no adapter exists at all (`bluetoothctl list` empty), hide the tile completely rather than showing a dead switch - the same rule the GPU readout follows.
+5. Check `systemctl is-active bluetooth` once at startup; if the service is down, the tile should say so instead of silently failing.
+
+**Done when**
+
+- [ ] With the adapter soft-blocked, one click powers Bluetooth on and the pill turns accent-coloured only after the adapter actually reports `Powered: yes`.
+- [ ] `rfkill block bluetooth` from a terminal is reflected in the tile within one poll interval.
+- [ ] With `bluetooth.service` stopped, the tile shows the service state and does not pretend to toggle.
+- [ ] On a machine with no Bluetooth adapter the tile is absent.
+
+**Risks**
+
+- `rfkill unblock` may need privileges depending on the seat setup; on this machine it worked as the normal user, but the call must degrade quietly rather than hanging on a polkit prompt - the same mistake game mode made with `scxctl`.
+- Two controllers were visible here (`hci1` blocked while `bluetoothctl list` showed one). Do not assume a single adapter.
+
+### `BT2` &middot; Decide: finish the in-shell Bluetooth UI, or hand off to blueman
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** A power switch with no device list is a dead end the moment you want to connect headphones, which is the only reason most people open Bluetooth at all.
+
+**Files**
+
+- `quickshell/hyprshell/QuickSettings.qml`
+- `quickshell/hyprshell/BluetoothPanel.qml` (only for the build-it option)
+- `arch/packages.txt`
+
+**Steps**
+
+1. Pick one and write the reason down in the file, so this is not re-litigated later.
+2. **Hand-off option (recommended):** clicking the tile's chevron launches `blueman-manager`; the tile keeps power on/off and shows the connected device's name. Blueman is already installed here; add it to `arch/packages.txt` so a fresh install has it.
+3. **Build-it option:** a `BluetoothPanel` using `Quickshell.Bluetooth` (the module exists in the installed 0.3.1 - `/usr/lib/qt6/qml/Quickshell/Bluetooth` - so verify its API before assuming a shape) listing paired and nearby devices, with connect, disconnect and forget. Pairing with a PIN is the part that carries real complexity; if you skip it, say so and keep blueman reachable for that case.
+4. Either way, show the connected device in the bar's status pill as a small glyph, invisible when nothing is connected - the same minimalism rule the rest of the bar follows.
+5. GNOME Settings' Bluetooth panel is a third option and needs nothing built, but it is a heavier dependency for one panel and does not integrate with the bar. Note the decision either way.
+
+**Done when**
+
+- [ ] Headphones can be paired and connected without opening a terminal.
+- [ ] The bar shows a connected device and shows nothing when there is none.
+- [ ] The chosen path is documented in the file with its reason.
+
+**Risks**
+
+- `Quickshell.Bluetooth`'s API in 0.3.1 is unverified; check it before designing against it.
+- Blueman brings a GTK tray applet that may want to autostart; if it is launched on demand only, make sure it does not add itself to autostart behind your back.
+
+---
+
 ## Window switching (Alt+Tab)
 
 ### Recommended approach
@@ -664,7 +907,7 @@ is for: flipping back and forth between the last two windows.
 
 **Steps**
 
-1. Add `property bool switcherOpen: false` and `property int switcherIndex: 0` to `State.qml`, and reset both in whatever `closePanels()` helper the other panels use.
+1. Add `property bool switcherOpen: false` and `property int switcherIndex: 0` to `ShellState.qml`, and reset both in whatever `closePanels()` helper the other panels use.
 2. Create `Switcher.qml` as a centred `PanelWindow` with `WlrLayershell.namespace: "hyprshell-panel"`, `WlrLayershell.layer: WlrLayer.Overlay`, `exclusiveZone: 0`, `color: "transparent"`, `visible: State.switcherOpen`. Leave `anchors` unset so it centres. Keyboard focus stays `None`: the submap owns the keys.
 3. Build the model on open: run `Process` with `["hyprctl","clients","-j"]`, parse in `StdioCollector.onStreamFinished`, drop entries where `mapped` is false or `hidden` is true, filter to the focused monitor, then `sort((a,b) => a.focusHistoryID - b.focusHistoryID)`. Refresh only on open, never while the overlay is up, so the order cannot shift under the user's fingers.
 4. Render a horizontal `Row` of tiles in a `Rectangle` styled like the other panels (`Theme.bg`, `Theme.radius`, 1px `Theme.border`, `Theme.pad`). Each tile is 96x96: the app icon at 48px via `DesktopEntries.heuristicLookup(client.class)` (the same lookup `Bar.qml:24` already uses, falling back to `initialClass` then a generic icon), and the window title elided under it in `Theme.fgDim`. The selected tile gets a `Theme.card` background at `Theme.radiusSmall` plus a 2px `Theme.accent` border. Show the full title of the selected window in one line below the row so long titles stay readable.
@@ -965,7 +1208,7 @@ Build this as three separable layers so each one degrades to nothing on its own:
 - Verified `claude --help` lists `-p/--print`, `--output-format`, `--input-format`. I did NOT run `claude -p` to confirm the `--output-format json` envelope shape.
 - Quickshell APIs used are all already in this repo: `Process` + `StdioCollector.onStreamFinished`, `Timer`, `PanelWindow`, `WlrLayershell.namespace/layer/keyboardFocus`, `HyprlandFocusGrab`, `Quickshell.execDetached`, `IpcHandler`. NOT used anywhere here and therefore unverified: `Quickshell.Io.FileView` (for watching the live transcript instead of polling) and `Quickshell.clipboardText`.
 - QtQuick.Shapes / `PathPolyline` for the sparkline is standard Qt 6 but is imported nowhere in this repo today, so its presence in the installed Quickshell Qt runtime is unverified. Canvas is the fallback.
-- RESOLVED 2026-09-06: qmldir lists only singletons (Notifs, Theme, State). Plain components resolve automatically from the same directory, so ClaudeWidget/ClaudePanel/ClaudeAsk need no qmldir entry.
+- CORRECTED 2026-09-06, after actually running the shell: the earlier note here was wrong. Once a qmldir exists it defines the module exhaustively, so EVERY component needs an entry, not just singletons - without one the shell dies with "Bar is not a type". New components must be added to quickshell/hyprshell/qmldir. Also avoid names that collide with QtQuick built-ins: the singleton was called State, which resolved to QtQuick's State element and silently made every binding undefined; it is now ShellState.
 
 ---
 
@@ -1109,7 +1352,7 @@ Recommended path: **protonmail-bridge (headless, systemd user service) + Evoluti
 4. Write the JSON atomically to `$XDG_RUNTIME_DIR/hyprshell/mail.json` (`open(tmp,'w')` then `os.replace`) so the shell never reads a half-written file.
 5. Add a systemd user service+timer in home-manager/home.nix: `systemd.user.services.hyprshell-mail = { Service = { Type = "oneshot"; ExecStart = "%h/.config/hypr/scripts/mail-status"; }; };` and `systemd.user.timers.hyprshell-mail = { Timer = { OnBootSec = "1m"; OnUnitActiveSec = "60s"; }; Install.WantedBy = ["timers.target"]; };`.
 6. Create quickshell/hyprshell/Mail.qml as `pragma Singleton` + `Singleton { ... }` holding `property bool ok`, `property int unread`, `property string latestFrom`, `property string latestSubject`; back it with `FileView { path: Quickshell.env("XDG_RUNTIME_DIR") + "/hyprshell/mail.json"; watchChanges: true; onFileChanged: reload() }` and parse `JSON.parse(text())` in a try/catch. Add a 90 s Timer that flips `ok=false` if the file's data stops updating.
-7. Register it in quickshell/hyprshell/qmldir: `singleton Mail 1.0 Mail.qml` (alongside the existing Notifs/Theme/State lines).
+7. Register it in quickshell/hyprshell/qmldir: `singleton Mail 1.0 Mail.qml` (alongside the existing Notifs/Theme/ShellState lines).
 8. Add a `function openMail()` to Services.qml: `Quickshell.execDetached(["gtk-launch", "org.gnome.Evolution"])`.
 
 **Done when**

@@ -1,0 +1,146 @@
+# ============================================================================
+# packages.txt - official-repository packages for the CachyOS / Arch host
+# ----------------------------------------------------------------------------
+# One pacman package per line. Comments (#) and blank lines are stripped by
+# arch/install.sh before the list is piped into pacman.
+#
+# Every name below was resolved against this machine's live pacman database
+# (CachyOS repos + core/extra/multilib) on 2026-09-06, so none is guessed.
+# On PLAIN Arch (no CachyOS repos) these four will NOT resolve and are the ones
+# to re-check with  pacman -Si <name> :
+#     quickshell            -> AUR (quickshell / quickshell-git)
+#     ananicy-cpp           -> AUR
+#     scx-scheds            -> AUR
+#     linux-cachyos-*       -> use linux / linux-lts + nvidia-open-dkms instead
+# ============================================================================
+
+# ---------------------------------------------------------------- base tools
+base-devel
+git
+jq
+fish
+zsh
+eza
+bat
+fd
+ripgrep
+fzf
+btop
+man-db
+
+# ------------------------------------------------------------ Wayland / Hypr
+hyprland
+hyprpaper
+hypridle
+hyprlock
+hyprpicker
+hyprshot
+hyprcursor
+uwsm
+xdg-desktop-portal
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+xorg-xwayland
+qt5-wayland
+qt6-wayland
+
+# ------------------------------------------------------------------- the bar
+# Quickshell is packaged in cachyos-extra-v3 on this box; on plain Arch it is
+# AUR only (see packages-aur.txt).
+quickshell
+
+# ------------------------------------------------------------ screen / clips
+grim
+slurp
+wl-clipboard
+cliphist
+wf-recorder
+gammastep
+
+# -------------------------------------------------------------- media / misc
+brightnessctl
+playerctl
+pavucontrol
+easyeffects
+libnotify
+
+# ----------------------------------------------------------------- terminals
+kitty
+alacritty
+
+# --------------------------------------------------------- launcher / apps
+wofi
+firefox
+nautilus                        # keybinds use nautilus; dolphin is the KDE fallback
+dolphin
+gnome-control-center
+gnome-system-monitor
+
+# ------------------------------------------------------ session / polkit / kr
+polkit
+hyprpolkitagent                 # the agent the shell relies on; without ANY agent every
+                                # GUI privilege prompt fails silently (noctalia used to provide one)
+polkit-gnome                    # alternative agent, older GTK dialog; only one is needed
+gnome-keyring
+libsecret
+dbus
+
+# ----------------------------------------------------------------- audio net
+pipewire
+pipewire-pulse
+pipewire-alsa
+pipewire-jack
+lib32-pipewire
+wireplumber
+networkmanager
+bluez
+bluez-utils
+
+# --------------------------------------------------------------- theme/fonts
+# Adwaita only - no Papirus.
+adw-gtk-theme                   # provides adw-gtk3/adw-gtk3-dark
+adwaita-icon-theme
+adwaita-cursors
+adwaita-fonts                   # Adwaita Sans + Adwaita Mono
+cantarell-fonts
+ttf-jetbrains-mono-nerd
+ttf-fira-mono                   # 'Fira Mono' monospace fallback in execs.conf
+noto-fonts
+noto-fonts-emoji
+fontconfig
+qt6ct
+gsettings-desktop-schemas
+glib2                           # provides gsettings, used by execs.conf
+
+# ------------------------------------------------------------- input method
+fcitx5
+fcitx5-configtool
+fcitx5-gtk
+fcitx5-qt
+
+# ------------------------------------------------------------------- NVIDIA
+# RTX 2060 (TU106, Turing) with the OPEN kernel modules. Keep the kernel and
+# the module package in lockstep - install the -open variant for every kernel
+# you boot. No PRIME/offload here: the i5-9400F has no iGPU.
+linux-cachyos-nvidia-open
+linux-cachyos-lts-nvidia-open
+nvidia-utils
+nvidia-settings
+lib32-nvidia-utils
+egl-wayland
+libva-nvidia-driver
+vulkan-icd-loader
+lib32-vulkan-icd-loader
+
+# ------------------------------------------------------------------- gaming
+gamemode
+lib32-gamemode
+gamescope
+mangohud
+lib32-mangohud
+steam
+
+# ----------------------------------------------------- scheduling / power
+power-profiles-daemon
+ananicy-cpp                     # CachyOS repo here; AUR on plain Arch
+scx-scheds                      # sched_ext schedulers; CachyOS repo

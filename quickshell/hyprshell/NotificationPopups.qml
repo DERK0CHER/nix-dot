@@ -27,7 +27,13 @@ PanelWindow {
         target: Notifs
         function onPopup(n) {
             const critical = n.urgency === NotificationUrgency.Critical
-            if (!critical && (State.doNotDisturb || State.gameMode)) return
+            // Game mode is an absolute block, critical included: nothing may
+            // draw over a fullscreen game. The one exception is game mode's own
+            // messages - the "press Super+G again to leave" confirmation is a
+            // notification, and suppressing it would strand the user in the mode.
+            const fromGameMode = (n.appName || "") === "Game mode"
+            if (ShellState.gameMode && !fromGameMode) return
+            if (!critical && ShellState.doNotDisturb) return
             win.add(n)
         }
     }
