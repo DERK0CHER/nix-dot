@@ -20,7 +20,9 @@ set -euo pipefail
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 STATE_FILE="$RUNTIME_DIR/hypr-game-mode.state"
 SHELL_CFG="${GAME_MODE_SHELL_CONFIG:-hyprshell}"
-SINGLE_MONITOR=0
+# Blanking the secondary monitor is now the default: an idle 1080p panel still
+# costs the GPU a composite every frame. --all-monitors opts out.
+SINGLE_MONITOR=${GAME_MODE_SINGLE_MONITOR:-1}
 
 # gamescope geometry for `run --exclusive`. Per-host values belong in the
 # environment (see hypr/hosts/<host>.conf and the shell profile), not here:
@@ -102,6 +104,93 @@ secondary_monitor() {
     | jq -r '[.[] | select(.disabled != true)] as $m
              | if ($m | length) < 2 then empty
                else ([$m[] | select(.focused != true)] | .[0].name // empty) end' 2>/dev/null || true
+}
+
+# ------------------------------------------------- background throttling ---
+# Renice + ionice everything that is not the game and not load-bearing, then put
+# it back. Deliberately NOT SIGSTOP: a stopped process can hold a lock, a dbus
+# reply or an audio buffer, and the failure mode is a hung desktop rather than a
+# slow one. Throttling is reversible and cannot deadlock anything.
+#
+# The protected list is the part to get right. Anything here keeps its priority:
+# the compositor, the shell drawing your bar, the audio chain, the session bus,
+# the polkit/keyring agents, and this script's own process tree.
+# Names are matched against `ps -o comm`, which truncates at 15 characters -
+# hence the clipped entries.
+THROTTLE_PROTECT='^(Hyprland|Xwayland|qs|quickshell|systemd|dbus-daemon|dbus-broker|pipewire|pipewire-pulse|wireplumber|easyeffects|xdg-desktop-por|xdg-document-po|xdg-permission-|gamemoded|gamescope|hypridle|hyprpaper|hyprlock|gnome-keyring-d|hyprpolkitagent|polkit-gnome-au|polkitd|sudo|ssh-agent|game-mode)$'
+THROTTLE_STATE="${XDG_RUNTIME_DIR:-/tmp}/hypr-game-mode.throttled"
+
+# Every pid in the game's process tree, so we never throttle the game itself.
+_game_tree_pids() {
+  local root="$1" out="$1" queue="$1" p kids
+  [[ -n "$root" && "$root" != "0" ]] || return 0
+  have pgrep || { echo "$root"; return 0; }
+  while [[ -n "$queue" ]]; do
+    local next=""
+    for p in $queue; do
+      kids="$(pgrep -P "$p" 2>/dev/null | tr '\n' ' ')"
+      [[ -n "$kids" ]] && { out="$out $kids"; next="$next $kids"; }
+    done
+    queue="$next"
+  done
+  echo "$out"
+}
+
+throttle_background() {
+  local mode="$1" game_pid="${2:-0}"
+
+  if [[ "$mode" == "off" ]]; then
+    [[ -f "$THROTTLE_STATE" ]] || return 0
+    local pid nice
+    while read -r pid nice; do
+      [[ "$pid" =~ ^[0-9]+$ ]] || continue
+      renice -n "${nice:-0}" -p "$pid" >/dev/null 2>&1 || true
+      have ionice && ionice -c 2 -n 4 -p "$pid" >/dev/null 2>&1 || true
+    done < "$THROTTLE_STATE"
+    rm -f -- "$THROTTLE_STATE" 2>/dev/null || true
+    return 0
+  fi
+
+  [[ "${GAME_MODE_THROTTLE:-1}" == 1 ]] || return 0
+  have ps || return 0
+
+  local skip
+  skip=" $(_game_tree_pids "$game_pid") $$ $PPID "
+  : > "$THROTTLE_STATE"
+
+  # Own processes only. Session leaders of the desktop are filtered by name.
+  local pid comm ni
+  while read -r pid comm ni; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ "$skip" == *" $pid "* ]] && continue
+    [[ "$comm" =~ $THROTTLE_PROTECT ]] && continue
+    # Only touch the ordinary 0..9 band, and note WHY this is a hard rule
+    # rather than a preference: an unprivileged process can raise its nice
+    # value but never lower it again. Throttling anything negative is therefore
+    # a ONE-WAY trip - the restore below silently fails with EPERM and the
+    # process stays at 19 for the rest of its life. An earlier version of this
+    # function did exactly that to easyeffects (ananicy pins the audio chain at
+    # -12) and only a restart of the service brought it back. Anything at 10+
+    # is already out of the way and not worth touching.
+    (( ni < 0 || ni >= 10 )) && continue
+    printf '%s %s\n' "$pid" "$ni" >> "$THROTTLE_STATE"
+    renice -n 19 -p "$pid" >/dev/null 2>&1 || true
+    have ionice && ionice -c 3 -p "$pid" >/dev/null 2>&1 || true
+  done < <(ps -u "$(id -u)" -o pid=,comm=,ni= 2>/dev/null)
+
+  local n; n="$(wc -l < "$THROTTLE_STATE" 2>/dev/null || echo 0)"
+  log "throttled $n background processes"
+}
+
+# ------------------------------------------------------- keyboard layout ---
+# caps:swapescape is great for editing and wrong for games: you want Escape on
+# Escape. Cleared while the mode is on; `cmd_off` reloads the config, which puts
+# the configured options back, so there is nothing to remember here.
+kb_gaming() {
+  case "$1" in
+    on)  hc keyword input:kb_options "" ;;
+    off) hc keyword input:kb_options "$(hyprctl getoption input:kb_options -j 2>/dev/null | jq -r '.str // ""' 2>/dev/null)" ;;
+  esac
 }
 
 # ---------------------------------------------------------------- state ---
@@ -416,6 +505,7 @@ cmd_on() {
   for arg in "$@"; do
     case "$arg" in
       --single-monitor) SINGLE_MONITOR=1 ;;
+      --all-monitors)   SINGLE_MONITOR=0 ;;
       0x*) addr="$arg" ;;
       address:*) addr="${arg#address:}" ;;
       *) ;;
@@ -437,8 +527,14 @@ cmd_on() {
   shell_ipc on
   apply_window_rules "$addr"
 
-  set_nice "$pid" -10
+  # The focused window is *the* process on this machine while the mode is on:
+  # the lowest nice sudo will grant, best-effort I/O at top priority, and the
+  # rest of the session pushed to 19. -15 rather than -20 leaves the kernel's
+  # own threads above it.
+  set_nice "$pid" -15
   set_ionice "$pid"
+  throttle_background on "$pid"
+  kb_gaming on
   gamemode_dbus RegisterGameByPID "$pid"
 
   pause_background
@@ -476,6 +572,8 @@ cmd_off() {
     hyprctl keyword windowrule "unset, match:address $addr" >/dev/null 2>&1 || true
     hc dispatch fullscreenstate 0 0 "address:$addr" 2>/dev/null || true
   fi
+  throttle_background off
+  kb_gaming off
   hc reload
 
   shell_ipc off
@@ -582,6 +680,7 @@ cmd_run() {
     case "$1" in
       --exclusive) exclusive=1; shift ;;
       --single-monitor) SINGLE_MONITOR=1; shift ;;
+      --all-monitors)   SINGLE_MONITOR=0; shift ;;
       --) shift; break ;;
       -*) log "unknown flag $1"; shift ;;
       *) break ;;

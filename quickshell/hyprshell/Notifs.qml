@@ -29,8 +29,15 @@ Singleton {
             n.tracked = true
             root.times[n.id] = Date.now()
             const critical = n.urgency === NotificationUrgency.Critical
-            if (critical || (!ShellState.doNotDisturb && !ShellState.gameMode))
+            const fromGameMode = (n.appName || "") === "Game mode"
+            // Same rule as the popups: game mode blocks everything except its
+            // own leave-confirmation. Notifications are still tracked, so the
+            // notification centre has them waiting afterwards.
+            if (ShellState.gameMode) {
+                if (fromGameMode) root.popup(n)
+            } else if (critical || !ShellState.doNotDisturb) {
                 root.popup(n)
+            }
         }
     }
 
