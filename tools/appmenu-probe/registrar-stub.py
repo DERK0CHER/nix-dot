@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Minimal com.canonical.AppMenu.Registrar, used to answer one question:
+"""com.canonical.AppMenu.Registrar - a REQUIRED service, not just a probe.
 
-does any application on this machine export its menu over DBus at all?
+Measured on 2026-09-06: plasma-integration only exports an application's menu
+when this well-known name exists on the session bus. Without it Kate exports
+nothing at all - not over DBus, and not over the Wayland org_kde_kwin_appmenu
+protocol either, even though the compositor advertises that global. So this has
+to be running before the app starts, or the global menu bar stays empty.
+
+On a full KDE session kded6's appmenu module owns this name. Outside Plasma
+nothing does, which is why this exists.
 
 KDE/Qt apps (via plasma-integration) and GTK3 apps (via appmenu-gtk-module)
 register their menu with this well-known name. If nothing registers while this
