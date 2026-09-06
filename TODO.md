@@ -50,6 +50,8 @@ nobody has to redo it:
 | | **Global menu** | |
 | `M1` | Finish the GTK-actions menu for GNOME apps (started, untested) | M &middot; 1-3 h |
 | `M2` | Steam: entries reachable in the dropdown but missing from the bar row | S &middot; under 1 h |
+| `M3` | Find a switcher that works during a game without costing scanout | M &middot; 1-3 h |
+| `M4` | Bring the user's Windows script into the repo and integrate it | M &middot; 1-3 h |
 | | **Bluetooth** | |
 | `BT1` | Make the quick-settings toggle handle the rfkill block | S &middot; under 1 h |
 | `BT2` | Decide: finish the in-shell Bluetooth UI, or hand off to blueman | M &middot; 1-3 h |
@@ -692,6 +694,89 @@ until you already know it is there.
 **Risks**
 
 - Steam is a Qt application that does not use KXmlGui, so its exported tree may legitimately be shaped differently from Kate's; the fix may belong in normalisation rather than rendering.
+
+### `M3` &middot; Find a switcher that works during a game without costing scanout
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** Alt+Tab is now blocked outright in game mode, which is correct but blunt - you still
+sometimes need to reach another window mid-session, and right now the only way out is leaving
+game mode entirely.
+
+**Files**
+
+- `quickshell/hyprshell/{Switcher.qml,shell.qml}`
+- `hypr/scripts/game-mode`
+
+**Steps**
+
+1. Understand why the block exists before designing around it. An overlay is a layer surface
+   above the game, and **any** surface above a fullscreen window stops Hyprland from handing the
+   buffer straight to the display. That is direct scanout - the Wayland equivalent of exclusive
+   fullscreen - and losing it costs a frame of latency mid-match. Measured on this machine: with
+   the bar mapped on the game's output the surface is there, and hiding the bar removes it.
+2. Options worth weighing, cheapest first:
+   - **Switch without showing anything.** Alt+Tab cycles focus directly with no overlay, exactly
+     like the old `cyclenext` but in most-recently-used order. No surface, no scanout cost. Loses
+     the preview, which is most of the point.
+   - **Overlay only on the other monitor.** This is a two-screen desk and the game owns one of
+     them. Rendering the switcher on the *other* output leaves the game's scanout untouched.
+     Cheap, and probably the right answer here.
+   - **Accept the cost while the overlay is up.** One or two frames during a deliberate gesture
+     may be a fair trade; make it a setting rather than a decision taken for the user.
+3. Whichever is chosen, verify the scanout claim rather than trusting it: `debug:disable_logs`
+   is on in `general.conf`, so turn it off, watch for scanout messages with and without the
+   overlay, and turn it back on.
+4. Keep the current hard block as the default until something is measured to be better.
+
+**Done when**
+
+- [ ] A window can be reached during game mode without leaving it.
+- [ ] The chosen approach is shown not to cost the game a frame, or the cost is documented and opt-in.
+
+**Risks**
+
+- Direct scanout has more preconditions than the overlay (format, opacity, scaling), so removing
+  the overlay may not restore it on its own - measure, do not assume.
+
+### `M4` &middot; Bring the user's Windows script into the repo and integrate it
+
+**Effort:** M &middot; 1-3 h
+
+**Why.** It lives outside version control today, so it is neither backed up nor reproducible on
+the other machine, and nothing in this setup knows it exists.
+
+**Files**
+
+- `scripts/` or `hypr/scripts/` (decide once the script's scope is known)
+- `hypr/hyprland/keybinds.conf` or `~/.config/hyprshell/commands.json`
+- `README.md`
+
+**Steps**
+
+1. **Ask first, then write.** The script has not been seen yet: get the path, read it, and record
+   here what it actually does before designing an integration. Everything below is provisional.
+2. Decide where it belongs by what it is. A desktop action belongs beside `game-mode` in
+   `hypr/scripts/`; a general utility belongs in a top-level `scripts/`. Do not scatter.
+3. Check it for machine-specific assumptions - hardcoded paths, monitor names, a username - the
+   same way the host split handles them, so it works on the NixOS machine too.
+4. Integrate rather than merely store it: give it a command-store entry so it is reachable from
+   the palette by a human-readable name, and a keybind only if it earns one.
+5. If it needs packages, add them to `arch/packages.txt` and note the NixOS equivalent.
+6. `bash -n` it, and state plainly in the README what is verified versus inherited as-is.
+
+**Done when**
+
+- [ ] The script is tracked in the repo and still runs from its new location.
+- [ ] It is reachable from the command palette under a name that says what it does.
+- [ ] Any machine-specific values are host-scoped rather than hardcoded.
+
+**Risks**
+
+- It may carry credentials or private paths - read it before committing, and gitignore anything
+  that must not be published.
+- "Windows" is ambiguous: it could mean a window-management helper or something involving a
+  Windows install or a VM. Confirm which before touching it.
 
 ---
 

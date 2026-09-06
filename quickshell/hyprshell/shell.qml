@@ -71,11 +71,21 @@ ShellRoot {
     IpcHandler {
         target: "switcher"
 
+        // Game mode blocks the switcher outright. Two reasons, and the second
+        // is the one that matters: an overlay is a layer surface above the
+        // game, and any surface above a fullscreen window stops Hyprland from
+        // handing the buffer straight to the display - direct scanout, the
+        // Wayland equivalent of exclusive fullscreen. Opening the switcher
+        // would silently cost a frame of latency in the middle of a match.
         function next(): void {
+            if (ShellState.gameMode)
+                return;
             ShellState.switcherStep(1);
         }
 
         function prev(): void {
+            if (ShellState.gameMode)
+                return;
             ShellState.switcherStep(-1);
         }
 
