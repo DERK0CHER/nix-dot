@@ -1,3 +1,4 @@
 singleton Notifs 1.0 Notifs.qml
 singleton Theme 1.0 Theme.qml
 singleton State 1.0 State.qml
+singleton Host 1.0 Host.qml

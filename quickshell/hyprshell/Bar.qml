@@ -93,6 +93,12 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        // elide only bites once a width is set, and the width is
+                        // a fraction of THIS monitor, never a pixel constant:
+                        // the bar spans 3440 px on the ultrawide and 1920 px on
+                        // the secondary. Keeps a long window title from growing
+                        // into the centred clock; on the ultrawide it never bites.
+                        width: Math.min(implicitWidth, Math.max(160, root.width * 0.22))
                         text: root.appName
                         font.family: Theme.font
                         font.pixelSize: Theme.fontSize

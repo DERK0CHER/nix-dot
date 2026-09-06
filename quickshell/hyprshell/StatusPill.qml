@@ -15,48 +15,14 @@ Item {
     readonly property bool hovered: mouse.containsMouse
     readonly property bool active: hovered || State.quickSettingsOpen
 
-    // ---- network (nmcli, polled) ----
-    property string netKind: ""      // "ethernet" | "wifi" | "none" | "" (unknown)
+    // ---- network ----
+    // Polled once per shell in Host.qml, not once per screen: this component is
+    // instantiated by every Bar, and with two monitors the old per-pill Timer
+    // fired two nmcli processes every 10 s.
+    readonly property string netKind: Host.netKind   // "ethernet" | "wifi" | "none" | "" (unknown)
     readonly property string netIcon: netKind === "ethernet" ? "network-wired-symbolic"
                                     : netKind === "wifi" ? "network-wireless-symbolic"
                                     : "network-offline-symbolic"
-
-    function parseNet(text) {
-        const lines = text.split("\n");
-        let kind = "none";
-        for (const l of lines) {
-            const parts = l.split(":");
-            if (parts.length < 2)
-                continue;
-            const type = parts[0];
-            const state = parts[1];
-            if (state.indexOf("connected") === 0 || state.indexOf("verbunden") === 0) {
-                if (type === "ethernet") {
-                    kind = "ethernet";
-                    break;
-                }
-                if (type === "wifi")
-                    kind = "wifi";
-            }
-        }
-        root.netKind = kind;
-    }
-
-    Process {
-        id: netProc
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "dev"]
-        stdout: StdioCollector {
-            onStreamFinished: root.parseNet(this.text)
-        }
-    }
-
-    Timer {
-        interval: 10000
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: netProc.running = true
-    }
 
     // ---- audio ----
     readonly property var sink: Pipewire.defaultAudioSink
@@ -200,6 +166,19 @@ Item {
                         }
                     }
                 }
+            }
+
+            // GPU load. Vendor-aware (Host.qml): NVIDIA via nvidia-smi, AMD via
+            // amdgpu sysfs. If the vendor tool is missing the whole item is
+            // gone - no zeros, no error text.
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: Host.gpuAvailable && Host.gpuUtil >= 0
+                text: Host.gpuLabel
+                font.family: Theme.font
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: Font.Medium
+                color: Theme.fg
             }
 
             StatusIcon {

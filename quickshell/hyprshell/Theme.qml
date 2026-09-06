@@ -29,4 +29,12 @@ Singleton {
     readonly property int pad: 12
     readonly property int gap: 6
     readonly property int animMs: 150
+
+    // Deliberately no per-monitor scaling here: this tree drives a 3440x1440
+    // 160 Hz ultrawide and a 1920x1080 secondary, and Wayland already hands
+    // each output its own scale. Sizes above are logical pixels and stay put.
+    // Opt-in overrides, uncomment and adjust locally if the ultrawide feels
+    // sparse - do not make them conditional on a screen size:
+    // readonly property int fontSize: 14
+    // readonly property int barHeight: 34
 }

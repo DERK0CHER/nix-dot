@@ -25,6 +25,19 @@ Scope {
     // gammastep running
     property bool nightLight: false
 
+    // GPU: vendor-aware, probed once per shell in Host.qml (singleton), not
+    // once per Services instance. AMD reads amdgpu sysfs, NVIDIA shells out to
+    // nvidia-smi, Intel has no readout. gpuAvailable is the only gate the UI
+    // needs: when the vendor tool is missing the whole readout disappears
+    // instead of showing zeros.
+    readonly property string gpuVendor: Host.gpuVendor
+    readonly property bool gpuAvailable: Host.gpuAvailable
+    readonly property int gpuUtil: Host.gpuUtil
+    readonly property int gpuTemp: Host.gpuTemp
+    readonly property int gpuMemUsed: Host.gpuMemUsed
+    readonly property int gpuMemTotal: Host.gpuMemTotal
+    readonly property int gpuMemPercent: Host.gpuMemPercent
+
     // audio (Pipewire)
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property real volume: (sink && sink.audio) ? sink.audio.volume : 0
@@ -112,7 +125,9 @@ Scope {
     }
 
     function parseBrightness(t) {
-        // amdgpu_bl1,backlight,255,100%,255
+        // "<device>,backlight,255,100%,255" - device name is vendor specific
+        // (amdgpu_bl1, nvidia_wmi_ec_backlight, intel_backlight, ...). A desktop
+        // usually has no backlight device at all -> empty output -> -1.
         const p = t.trim().split(",")
         if (p.length >= 4) {
             const v = parseInt(p[3].replace("%", ""))

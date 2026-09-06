@@ -1,0 +1,19 @@
+# ============================================================================
+# packages-aur.txt - AUR packages, installed with yay by arch/install.sh
+# ----------------------------------------------------------------------------
+# BEST EFFORT. The AUR renames and orphans packages constantly, and CachyOS
+# ships several of these in its own binary repos (cachyos, cachyos-extra-v3,
+# cachyos-v3), in which case pacman already has them and the AUR entry is a
+# duplicate.
+#
+# Check EVERY name before a blind install:
+#     yay -Si <name>
+# and drop the line if  pacman -Si <name>  already resolves it.
+#
+# Keep this list short on purpose: anything that exists in an official repo
+# belongs in packages.txt, not here.
+# ============================================================================
+
+vesktop-bin          # Discord client with Wayland screenshare; repo ships vesktop/ config
+rustdesk-bin         # remote desktop; repo ships rustdesk/ config
+hyprland-qtutils     # qt dialogs Hyprland shells out to; NOT in the CachyOS/Arch repos here
